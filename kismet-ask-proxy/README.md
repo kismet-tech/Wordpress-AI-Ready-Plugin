@@ -1,13 +1,18 @@
 # Kismet Ask Proxy WordPress Plugin
 
-This plugin intercepts requests to `/ask` on WordPress sites and forwards them to `api.makekismet.com/ask`.
+This plugin creates an AI-ready WordPress site with three key features:
+
+1. **API Proxy**: Forwards `/ask` requests to Kismet backend
+2. **AI Discovery**: Serves `/.well-known/ai-plugin.json` for AI agents
+3. **robots.txt Integration**: Adds AI agent permissions to robots.txt
 
 ## What It Does
 
-- **Intercepts**: `yoursite.com/ask` requests
-- **Forwards to**: `api.makekismet.com/ask`
+- **Intercepts**: `yoursite.com/ask` requests and forwards to `api.makekismet.com/ask`
+- **Serves**: AI plugin discovery file at `yoursite.com/.well-known/ai-plugin.json`
+- **Modifies**: robots.txt to allow AI agents access to required endpoints
 - **Preserves**: Request method (GET/POST), headers, and body data
-- **Returns**: Response from Kismet backend to original requester
+- **Returns**: Responses from Kismet backend to original requester
 
 ## Installation Methods
 
@@ -36,49 +41,221 @@ This plugin intercepts requests to `/ask` on WordPress sites and forwards them t
    - Find "Kismet Ask Proxy"
    - Click **Activate**
 
-## Testing
+## Testing All Features
 
-After activation, test by visiting:
+After activation, test all three features:
+
+### 1. Test robots.txt (AI Agent Discovery)
+
+**Check the URL:**
 
 ```
-yoursite.com/ask
+https://yoursite.com/robots.txt
 ```
 
-This should forward to `api.makekismet.com/ask` and return the response.
+**Expected result:**
+
+```
+User-agent: *
+Disallow: /wp-admin/
+Allow: /wp-admin/admin-ajax.php
+
+# Kismet AI integration
+User-agent: *
+Allow: /ask
+Allow: /.well-known/ai-plugin.json
+```
+
+### 2. Test AI Plugin JSON (AI Agent Metadata)
+
+**Check the URL:**
+
+```
+https://yoursite.com/.well-known/ai-plugin.json
+```
+
+**Expected result:**
+
+```json
+{
+  "schema_version": "v1",
+  "name_for_human": "Your Site AI Assistant",
+  "name_for_model": "your_site_assistant",
+  "description_for_human": "Get information about Your Site...",
+  "description_for_model": "Provides hotel information...",
+  "auth": {
+    "type": "none"
+  },
+  "api": {
+    "type": "openapi",
+    "url": "https://yoursite.com/ask"
+  },
+  "logo_url": "https://yoursite.com/wp-content/uploads/2024/kismet-logo.png",
+  "contact_email": "admin@yoursite.com",
+  "legal_info_url": "https://yoursite.com/privacy-policy"
+}
+```
+
+### 3. Test /ask API Endpoint
+
+#### Test with Browser (Human Visitors)
+
+Visit:
+
+```
+https://yoursite.com/ask
+```
+
+**Expected:** Beautiful animated checklist page with Kismet branding
+
+#### Test with curl (API Requests)
+
+**GET Request Example:**
+
+```bash
+curl "https://yoursite.com/ask?query=what are your check-in times" \
+  -H "Accept: application/json"
+```
+
+**POST Request Example:**
+
+```bash
+curl -X POST "https://yoursite.com/ask" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json" \
+  -d '{
+    "query": "what are your amenities?",
+    "streaming": true
+  }'
+```
+
+**Expected API Response:**
+
+```json
+{
+  "response": "Our check-in time is 3:00 PM...",
+  "site": "yoursite.com"
+}
+```
+
+## Plugin Settings
+
+Configure the AI plugin JSON by going to:
+**WordPress Admin** → **Settings** → **Kismet AI Plugin**
+
+### Option 1: Custom JSON URL
+
+Enter a URL to your own complete ai-plugin.json file.
+
+### Option 2: Individual Field Customization
+
+Customize individual fields:
+
+- Business Name
+- Business Description
+- Logo URL
+- Contact Email
+- Privacy/Legal Info URL
 
 ## Troubleshooting
 
-### Plugin Not Showing Up
+### robots.txt Not Working
 
-- Check file location: `/wp-content/plugins/kismet-ask-proxy/kismet-ask-proxy.php`
-- Ensure PHP opening tag `<?php` is the first line
+If the robots.txt modifications aren't appearing:
 
-### Getting 502 Errors
+1. **Check "Discourage search engines" setting:**
 
-- Check WordPress error logs
-- Verify `api.makekismet.com` is accessible from your server
-- Check PHP error logs for details
+   - Go to **WordPress Admin → Settings → Reading**
+   - **Ensure "Discourage search engines from indexing this site" is UNCHECKED**
+   - This setting blocks WordPress robots.txt filters from running
 
-### Enable Debug Logging
+2. **Clear cache and test:**
 
-Add to `wp-config.php`:
+   - Use cache-busting URL: `yoursite.com/robots.txt?v=123`
+   - Try incognito/private browser window
+   - Hard refresh: Ctrl+F5 (Windows) or Cmd+Shift+R (Mac)
 
-```php
-define('WP_DEBUG', true);
-define('WP_DEBUG_LOG', true);
+3. **Check for physical robots.txt file:**
+   - Look in your website root directory via hosting file manager
+   - If physical file exists, it overrides WordPress dynamic generation
+
+### ai-plugin.json Returns 404
+
+If the JSON endpoint returns "Not Found":
+
+1. **Flush rewrite rules:**
+
+   - Go to **WordPress Admin → Settings → Permalinks**
+   - Click "Save Changes" (don't change anything)
+   - This refreshes WordPress URL rewrite rules
+
+2. **Deactivate and reactivate plugin:**
+   - Forces rewrite rule registration
+
+## Testing URLs
+
+### 1. Test robots.txt
+
+**URL:** `https://yoursite.com/robots.txt`
+
+**Expected result:**
+
+```
+User-agent: *
+Disallow: /wp-admin/
+Allow: /wp-admin/admin-ajax.php
+
+# Kismet AI integration
+User-agent: *
+Allow: /ask
+Allow: /.well-known/ai-plugin.json
 ```
 
-Check logs at: `/wp-content/debug.log`
+### 2. Test AI Plugin JSON
+
+**URL:** `https://yoursite.com/.well-known/ai-plugin.json`
+
+**Expected result:**
+
+```json
+{
+  "schema_version": "v1",
+  "name_for_human": "Your Site AI Assistant",
+  "name_for_model": "your_site_assistant",
+  "description_for_human": "Get information about Your Site...",
+  "description_for_model": "Provides hotel information...",
+  "auth": {
+    "type": "none"
+  },
+  "api": {
+    "type": "openapi",
+    "url": "https://yoursite.com/ask"
+  },
+  "logo_url": "https://yoursite.com/wp-content/uploads/2024/kismet-logo.png",
+  "contact_email": "admin@yoursite.com",
+  "legal_info_url": "https://yoursite.com/privacy-policy"
+}
+```
 
 ## Features
 
-- ✅ Supports GET and POST requests
-- ✅ Forwards request headers and body
-- ✅ Proper error handling
-- ✅ WordPress security best practices
+- ✅ Modular architecture with separated concerns
+- ✅ robots.txt integration (non-destructive)
+- ✅ AI plugin discovery JSON generation
+- ✅ Customizable business information
+- ✅ API proxy with GET/POST support
+- ✅ Branded page for human visitors
+- ✅ WordPress admin settings interface
+- ✅ Proper error handling and security
 - ✅ Debug logging for troubleshooting
-- ✅ CORS header forwarding
 
-## Technical Details
+## Architecture
 
-The plugin uses WordPress's `wp_remote_request()` function to make secure HTTP requests to the Kismet backend while preserving all necessary request data.
+The plugin uses a modular approach:
+
+- **Main Plugin** (`kismet-ask-proxy.php`): Coordinates all functionality
+- **Robots Handler** (`includes/class-robots-handler.php`): robots.txt modifications only
+- **AI Plugin Handler** (`includes/class-ai-plugin-handler.php`): JSON generation and settings
+- **Ask Handler** (`includes/class-ask-handler.php`): /ask page and API proxy
+
+This separation ensures that issues with one feature don't affect others, making debugging and maintenance much easier.

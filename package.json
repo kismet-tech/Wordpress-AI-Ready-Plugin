@@ -1,0 +1,26 @@
+{
+  "name": "kismet-wordpress-plugin",
+  "version": "1.0.0",
+  "description": "WordPress plugin for Kismet AI integration - creates /ask endpoint and AI agent discovery",
+  "scripts": {
+    "build-plugin": "rm -f kismet-ask-proxy.zip && zip -r kismet-ask-proxy.zip kismet-ask-proxy/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kismet-tech/Wordpress-AI-Ready-Plugin.git"
+  },
+  "keywords": [
+    "wordpress",
+    "plugin",
+    "ai",
+    "chatbot",
+    "kismet",
+    "api-proxy"
+  ],
+  "author": "Kismet",
+  "license": "GPL-2.0-or-later",
+  "bugs": {
+    "url": "https://github.com/kismet-tech/Wordpress-AI-Ready-Plugin/issues"
+  },
+  "homepage": "https://github.com/kismet-tech/Wordpress-AI-Ready-Plugin#readme"
+}
