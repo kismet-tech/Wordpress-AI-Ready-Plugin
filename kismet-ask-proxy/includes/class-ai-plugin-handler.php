@@ -13,8 +13,17 @@ if (!defined('ABSPATH')) {
 class Kismet_AI_Plugin_Handler {
     
     public function __construct() {
+        // Try both approaches: traditional rewrite rules AND direct request interception
         add_action('init', array($this, 'add_ai_plugin_rewrite'));
         add_filter('query_vars', array($this, 'add_query_vars'));
+        
+        // EARLIEST possible hook - test if WordPress even sees the request
+        add_action('muplugins_loaded', array($this, 'very_early_intercept'));
+        
+        // Direct request interception - catches requests before WordPress routing
+        add_action('parse_request', array($this, 'intercept_ai_plugin_request'));
+        
+        // Fallback handler for rewrite rule approach
         add_action('template_redirect', array($this, 'handle_ai_plugin_request'));
         
         // Admin settings functionality
@@ -23,7 +32,29 @@ class Kismet_AI_Plugin_Handler {
     }
     
     public function add_ai_plugin_rewrite() {
-        add_rewrite_rule('^\.well-known/ai-plugin\.json$', 'index.php?kismet_ai_plugin=1', 'top');
+        error_log('KISMET DEBUG: add_ai_plugin_rewrite() called');
+        
+        // More robust rewrite rule with optional trailing slash
+        add_rewrite_rule('\.well-known/ai-plugin\.json/?$', 'index.php?kismet_ai_plugin=1', 'top');
+        
+        error_log('KISMET DEBUG: Rewrite rule added for \.well-known/ai-plugin\.json/?$');
+        
+        // Debug: Let's see what rewrite rules WordPress has after our addition
+        global $wp_rewrite;
+        if (isset($wp_rewrite->rules)) {
+            $our_rule_found = false;
+            foreach ($wp_rewrite->rules as $pattern => $rewrite) {
+                if (strpos($pattern, 'well-known') !== false || strpos($pattern, 'ai-plugin') !== false) {
+                    error_log("KISMET DEBUG: Found related rule: '$pattern' => '$rewrite'");
+                    $our_rule_found = true;
+                }
+            }
+            if (!$our_rule_found) {
+                error_log('KISMET DEBUG: No ai-plugin related rules found in wp_rewrite->rules');
+            }
+        } else {
+            error_log('KISMET DEBUG: wp_rewrite->rules is not set');
+        }
     }
     
     public function add_query_vars($vars) {
@@ -31,18 +62,76 @@ class Kismet_AI_Plugin_Handler {
         return $vars;
     }
     
-    public function handle_ai_plugin_request() {
-        if (get_query_var('kismet_ai_plugin')) {
+    /**
+     * Very early intercept - runs as soon as WordPress starts loading
+     */
+    public function very_early_intercept() {
+        $request_uri = $_SERVER['REQUEST_URI'] ?? '';
+        
+        // Log ALL requests to see if .well-known requests reach WordPress
+        error_log("KISMET DEBUG: very_early_intercept - WordPress processing URI: $request_uri");
+        
+        // Check if this is a request for our ai-plugin.json
+        if (preg_match('#^/\.well-known/ai-plugin\.json/?(\?.*)?$#', $request_uri)) {
+            error_log("KISMET DEBUG: VERY EARLY - Detected .well-known/ai-plugin.json request!");
+            
+            // Don't serve here - just confirm WordPress sees the request
+            // Let other hooks handle the actual serving
+        }
+    }
+    
+    /**
+     * Direct request interception - catches /.well-known/ai-plugin.json before WordPress routing
+     */
+    public function intercept_ai_plugin_request($wp) {
+        $request_uri = $_SERVER['REQUEST_URI'] ?? '';
+        
+        error_log("KISMET DEBUG: intercept_ai_plugin_request called for URI: $request_uri");
+        
+        // Check if this is a request for our ai-plugin.json
+        if (preg_match('#^/\.well-known/ai-plugin\.json/?(\?.*)?$#', $request_uri)) {
+            error_log("KISMET DEBUG: Intercepted .well-known/ai-plugin.json request directly");
+            
             $custom_url = get_option('kismet_custom_ai_plugin_url', '');
             
             if (!empty($custom_url)) {
+                error_log("KISMET DEBUG: Using custom URL proxy (intercepted)");
+                $this->proxy_custom_ai_plugin($custom_url);
+            } else {
+                error_log("KISMET DEBUG: Serving generated JSON (intercepted)");
+                $this->serve_generated_ai_plugin();
+            }
+            exit;
+        }
+    }
+    
+    public function handle_ai_plugin_request() {
+        $query_var = get_query_var('kismet_ai_plugin');
+        $request_uri = $_SERVER['REQUEST_URI'] ?? '';
+        
+        error_log("KISMET DEBUG: handle_ai_plugin_request called for URI: $request_uri");
+        error_log("KISMET DEBUG: kismet_ai_plugin query var = " . ($query_var ? 'TRUE' : 'FALSE'));
+        
+        if ($query_var) {
+            error_log("KISMET DEBUG: Serving ai-plugin.json");
+            
+            $custom_url = get_option('kismet_custom_ai_plugin_url', '');
+            
+            if (!empty($custom_url)) {
+                error_log("KISMET DEBUG: Using custom URL proxy");
                 // Proxy to custom URL
                 $this->proxy_custom_ai_plugin($custom_url);
             } else {
+                error_log("KISMET DEBUG: Serving generated JSON");
                 // Serve auto-generated JSON
                 $this->serve_generated_ai_plugin();
             }
             exit;
+        } else {
+            // Only log this for .well-known requests to avoid spam
+            if (strpos($request_uri, 'well-known') !== false) {
+                error_log("KISMET DEBUG: .well-known request but query var not detected");
+            }
         }
     }
     
