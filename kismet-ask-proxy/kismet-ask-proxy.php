@@ -157,14 +157,17 @@ if (class_exists("Kismet_AI_Plugin_Handler")) {
 ?>';
     
     // Create .htaccess rule to rewrite ai-plugin.json to our PHP handler
-    $htaccess_content = '# Kismet AI Plugin - Rewrite ai-plugin.json to PHP handler
+    $our_htaccess_rules = '
+# BEGIN Kismet AI Plugin
 RewriteEngine On
 RewriteRule ^ai-plugin\.json$ ai-plugin-handler.php [L]
-';
+# END Kismet AI Plugin';
     
     // Write the PHP file
     $php_success = file_put_contents($ai_plugin_php_file, $php_content);
-    $htaccess_success = file_put_contents($htaccess_file, $htaccess_content);
+    
+    // Handle .htaccess more carefully - preserve existing content
+    $htaccess_success = kismet_add_htaccess_rules($htaccess_file, $our_htaccess_rules);
     
     if ($php_success && $htaccess_success) {
         error_log("KISMET DEBUG: Successfully created ai-plugin PHP handler and .htaccess");
@@ -193,12 +196,12 @@ function kismet_remove_physical_ai_plugin_file() {
         }
     }
     
-    // Remove .htaccess file
+    // Remove only our .htaccess rules, preserve other content
     if (file_exists($htaccess_file)) {
-        if (unlink($htaccess_file)) {
-            error_log("KISMET DEBUG: Removed .well-known/.htaccess file");
+        if (kismet_remove_htaccess_rules($htaccess_file)) {
+            error_log("KISMET DEBUG: Removed Kismet rules from .well-known/.htaccess");
         } else {
-            error_log("KISMET ERROR: Failed to remove .htaccess file");
+            error_log("KISMET ERROR: Failed to remove Kismet rules from .htaccess file");
         }
     }
     
@@ -206,6 +209,75 @@ function kismet_remove_physical_ai_plugin_file() {
     if (file_exists($well_known_dir) && count(scandir($well_known_dir)) == 2) { // only . and ..
         rmdir($well_known_dir);
         error_log("KISMET DEBUG: Removed empty .well-known directory");
+    }
+}
+
+// === .HTACCESS HELPER FUNCTIONS ===
+
+/**
+ * Safely add our rules to .htaccess, preserving existing content
+ */
+function kismet_add_htaccess_rules($htaccess_file, $our_rules) {
+    // Read existing content if file exists
+    $existing_content = '';
+    if (file_exists($htaccess_file)) {
+        $existing_content = file_get_contents($htaccess_file);
+        
+        // Check if our rules are already there to avoid duplicates
+        if (strpos($existing_content, '# BEGIN Kismet AI Plugin') !== false) {
+            error_log("KISMET DEBUG: Kismet rules already exist in .htaccess");
+            return true; // Already exists, that's fine
+        }
+    }
+    
+    // Add our rules to the existing content
+    $new_content = $existing_content . $our_rules;
+    
+    // Write the combined content back
+    $success = file_put_contents($htaccess_file, $new_content);
+    
+    if ($success) {
+        error_log("KISMET DEBUG: Successfully added Kismet rules to .htaccess");
+        return true;
+    } else {
+        error_log("KISMET ERROR: Failed to write Kismet rules to .htaccess");
+        return false;
+    }
+}
+
+/**
+ * Safely remove only our rules from .htaccess, preserving other content
+ */
+function kismet_remove_htaccess_rules($htaccess_file) {
+    if (!file_exists($htaccess_file)) {
+        return true; // File doesn't exist, nothing to remove
+    }
+    
+    $content = file_get_contents($htaccess_file);
+    
+    // Remove our section using regex
+    $pattern = '/\n?# BEGIN Kismet AI Plugin.*?# END Kismet AI Plugin\n?/s';
+    $new_content = preg_replace($pattern, '', $content);
+    
+    // If the content is now empty or just whitespace, delete the file
+    if (trim($new_content) === '') {
+        if (unlink($htaccess_file)) {
+            error_log("KISMET DEBUG: Removed empty .htaccess file");
+            return true;
+        } else {
+            error_log("KISMET ERROR: Failed to remove empty .htaccess file");
+            return false;
+        }
+    } else {
+        // Write back the content without our rules
+        $success = file_put_contents($htaccess_file, $new_content);
+        if ($success) {
+            error_log("KISMET DEBUG: Successfully removed Kismet rules, preserved other content");
+            return true;
+        } else {
+            error_log("KISMET ERROR: Failed to write cleaned .htaccess content");
+            return false;
+        }
     }
 }
 
