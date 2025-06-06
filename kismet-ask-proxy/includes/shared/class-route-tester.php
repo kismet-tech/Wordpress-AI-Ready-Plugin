@@ -4,6 +4,55 @@
  *
  * This utility class tests if routes will work BEFORE creating any rewrite rules
  * or files. Should be used by all handlers as a prerequisite check.
+ *
+ * Route Tester for Kismet Ask Proxy Plugin
+ * 
+ * This class provides multiple approaches for testing whether WordPress can serve
+ * content at specific URL paths. It's crucial for determining the best strategy
+ * for serving files like /.well-known/ai-plugin.json or /robots.txt.
+ * 
+ * TESTING APPROACHES EXPLAINED:
+ * 
+ * 1. ENVIRONMENT CAPABILITY TESTING (test_route method):
+ *    - Creates TEMPORARY test paths with unique suffixes (e.g., "servers-test-123456.json")
+ *    - Tests both WordPress rewrite rules AND physical file creation
+ *    - Determines if nginx/apache can serve files directly or if WordPress rewrite is needed
+ *    - Use this when: Setting up a new endpoint and need to know HOW to implement it
+ *    - Benefits: Tells you which approach works in your hosting environment
+ * 
+ * 2. EXISTING ROUTE CHECK (is_route_active method):
+ *    - Tests the ACTUAL path you want to check (e.g., "servers.json")
+ *    - Simple HTTP GET request to see if path returns 200 status
+ *    - No temporary files or artifacts created
+ *    - Use this when: Checking if an existing endpoint is already working
+ *    - Benefits: Fast, accurate check - "should I set up this route or skip it?"
+ * 
+ * WHY THE FALSE POSITIVE PROBLEM EXISTED:
+ * - Safe handlers called is_route_active() before setting up endpoints
+ * - Old version used comprehensive testing with temporary paths
+ * - Test would pass (temporary path worked) but real path still returned 404
+ * - Handler thought endpoint was working, skipped setup, real route stayed broken
+ * 
+ * WHAT EACH METHOD CHECKS:
+ * 
+ * determine_serving_method() - ENVIRONMENT CAPABILITY TESTING:
+ * ✓ Does hosting serve .json/.txt files directly? (nginx/apache)
+ * ✓ Do WordPress rewrite rules work?
+ * ✓ Which approach is faster/more reliable?
+ * ✓ Returns: recommendation for implementation approach
+ * 
+ * is_route_active() - EXISTING ROUTE VERIFICATION:
+ * ✓ Does the specific URL return HTTP 200?
+ * ✓ Is content already being served?
+ * ✓ Should we skip setup (route already works)?
+ * ✓ Returns: boolean true/false
+ * 
+ * WHEN TO USE EACH METHOD:
+ * - determine_serving_method(): Determine HOW to implement a route (file vs rewrite)
+ * - is_route_active(): Check if route already works (skip setup)
+ * 
+ * @package Kismet_Ask_Proxy
+ * @since 1.0.0
  */
 
 // Prevent direct access
@@ -19,14 +68,27 @@ if (!defined('ABSPATH')) {
 class Kismet_Route_Tester {
     
     /**
-     * Test a specific route to see if it can be made accessible
+     * DETERMINE SERVING METHOD: Test if hosting supports nginx/apache vs WordPress rewrite
+     * 
+     * This method creates TEMPORARY test paths (with unique suffixes) to avoid conflicts
+     * with existing routes. It tests both WordPress rewrite rules and physical file
+     * creation to determine which approach works in your hosting environment.
+     * 
+     * EXAMPLE: If you want to test /.well-known/mcp/servers.json
+     * - Creates temporary path: /.well-known/mcp/servers-kismet-test-1734718234-4567.json
+     * - Tests WordPress rewrite approach with temporary path
+     * - Tests physical file creation with temporary path (nginx/apache serves directly)
+     * - Returns recommendation: "use physical files" or "use WordPress rewrite"
+     * 
+     * Use this when: Setting up a new endpoint and need to know HOW to implement it
+     * Don't use this when: Just checking if an existing endpoint works (use is_route_active)
      * 
      * @param string $path The path to test (e.g., '/llms.txt', '/.well-known/ai-plugin.json')
      * @param string $test_content Content to use for testing (optional)
      * @param array $options Additional testing options
      * @return array Comprehensive test results with recommendations
      */
-    public function test_route($path, $test_content = 'test', $options = array()) {
+    public function determine_serving_method($path, $test_content = 'test', $options = array()) {
         $results = array(
             'path' => $path,
             'timestamp' => current_time('mysql'),
@@ -70,7 +132,7 @@ class Kismet_Route_Tester {
      * @return array Test results
      */
     public function test_well_known_route($filename, $test_content = 'test') {
-        return $this->test_route('/.well-known/' . $filename, $test_content);
+        return $this->determine_serving_method('/.well-known/' . $filename, $test_content);
     }
     
     /**
@@ -81,7 +143,35 @@ class Kismet_Route_Tester {
      * @return array Test results
      */
     public function test_root_route($filename, $test_content = 'test') {
-        return $this->test_route('/' . $filename, $test_content);
+        return $this->determine_serving_method('/' . $filename, $test_content);
+    }
+    
+    /**
+     * IS ROUTE ACTIVE: Check if the route already works (tests the ACTUAL path)
+     * 
+     * This method tests if the real path is accessible by making an HTTP request
+     * to the actual URL. Unlike determine_serving_method(), this doesn't create temporary paths
+     * or test artifacts - it just checks if the route you want actually works.
+     * 
+     * @param string $path The actual path to test (e.g., '/.well-known/mcp/servers.json')
+     * @return bool True if route is accessible and returns 200, false otherwise
+     */
+    public function is_route_active($path) {
+        $site_url = get_site_url();
+        $test_url = $site_url . $path;
+        
+        $response = wp_remote_get($test_url, array(
+            'timeout' => 10,
+            'sslverify' => true,
+            'user-agent' => 'Kismet Route Tester/1.0'
+        ));
+        
+        if (is_wp_error($response)) {
+            return false;
+        }
+        
+        $response_code = wp_remote_retrieve_response_code($response);
+        return ($response_code === 200);
     }
     
     /**

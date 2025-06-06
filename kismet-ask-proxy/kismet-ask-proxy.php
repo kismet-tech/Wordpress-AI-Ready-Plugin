@@ -24,12 +24,12 @@ if (!defined('ABSPATH')) {
 define('KISMET_PLUGIN_PATH', plugin_dir_path(__FILE__));
 define('KISMET_PLUGIN_URL', plugin_dir_url(__FILE__));
 
-// Include our modular handler classes
-require_once KISMET_PLUGIN_PATH . 'includes/endpoints/robots-txt/class-robots-handler.php';
-require_once KISMET_PLUGIN_PATH . 'includes/endpoints/ai-plugin-json/class-ai-plugin-handler.php';
+// Include our modular handler classes (ALL SAFE VERSIONS with comprehensive testing)
+require_once KISMET_PLUGIN_PATH . 'includes/endpoints/robots-txt/class-robots-handler-safe.php';
+require_once KISMET_PLUGIN_PATH . 'includes/endpoints/ai-plugin-json/class-ai-plugin-handler-safe.php';
 require_once KISMET_PLUGIN_PATH . 'includes/endpoints/ask/class-ask-handler.php';
-require_once KISMET_PLUGIN_PATH . 'includes/endpoints/mcp-servers-json/class-mcp-servers-handler.php';
-require_once KISMET_PLUGIN_PATH . 'includes/endpoints/llms-txt/class-llms-txt-handler.php';
+require_once KISMET_PLUGIN_PATH . 'includes/endpoints/mcp-servers-json/class-mcp-servers-handler-safe.php';
+require_once KISMET_PLUGIN_PATH . 'includes/endpoints/llms-txt/class-llms-txt-handler-safe.php';
 
 // Include modular environment detection system
 require_once KISMET_PLUGIN_PATH . 'includes/environment/class-system-checker.php';
@@ -50,12 +50,12 @@ class Kismet_Ask_Proxy_Plugin {
     private $llms_txt_handler;
     
     public function __construct() {
-        // Initialize all our handler classes
-        $this->robots_handler = new Kismet_Robots_Handler();
-        $this->ai_plugin_handler = new Kismet_AI_Plugin_Handler();
+        // Initialize all our handler classes (ALL SAFE VERSIONS with comprehensive testing)
+        $this->robots_handler = new Kismet_Robots_Handler_Safe();
+        $this->ai_plugin_handler = new Kismet_AI_Plugin_Handler_Safe();
         $this->ask_handler = new Kismet_Ask_Handler();
-        $this->mcp_servers_handler = new Kismet_MCP_Servers_Handler();
-        $this->llms_txt_handler = new Kismet_LLMS_Txt_Handler();
+        $this->mcp_servers_handler = new Kismet_MCP_Servers_Handler_Safe();
+        $this->llms_txt_handler = new Kismet_LLMS_Txt_Handler_Safe();
     
         // Add a "Settings" link to the plugin row
         add_filter('plugin_action_links_' . plugin_basename(__FILE__), array($this, 'add_settings_link'));
@@ -129,18 +129,12 @@ register_activation_hook(__FILE__, function() {
     
     // Proceed with activation only if environment is compatible
     if ($environment_detector->is_environment_compatible()) {
-        // Create physical .well-known directory and files to bypass web server blocking
-        kismet_create_physical_well_known_files();
-            
-        // Flush rewrite rules for ai-plugin.json, mcp/servers.json, and llms.txt
-        $ai_plugin_handler = new Kismet_AI_Plugin_Handler();
-        $ai_plugin_handler->flush_rewrite_rules();
+        // ALL safe versions handle their setup automatically via 'init' action
+        // They test accessibility, choose optimal approaches (file vs rewrite), and handle conflicts
+        // No manual intervention needed!
         
-        $mcp_servers_handler = new Kismet_MCP_Servers_Handler();
-        $mcp_servers_handler->flush_rewrite_rules();
-        
-        $llms_txt_handler = new Kismet_LLMS_Txt_Handler();
-        $llms_txt_handler->flush_rewrite_rules();
+        // Force a general flush to ensure any rewrite rules added by safe versions are registered
+        flush_rewrite_rules();
         
         // Force a hard flush after a delay to ensure rules are properly registered
         wp_schedule_single_event(time() + 5, 'kismet_delayed_flush');
@@ -223,8 +217,8 @@ function kismet_create_physical_well_known_files() {
 require_once(__DIR__ . "/../wp-load.php");
 
 // Get the AI plugin handler and generate JSON
-if (class_exists("Kismet_AI_Plugin_Handler")) {
-    $handler = new Kismet_AI_Plugin_Handler();
+if (class_exists("Kismet_AI_Plugin_Handler_Safe")) {
+    $handler = new Kismet_AI_Plugin_Handler_Safe();
     
     // Use reflection to call private method
     $reflection = new ReflectionClass($handler);
@@ -261,8 +255,8 @@ if (class_exists("Kismet_AI_Plugin_Handler")) {
 require_once(__DIR__ . "/../../wp-load.php");
 
 // Get the MCP servers handler and generate JSON
-if (class_exists("Kismet_MCP_Servers_Handler")) {
-    $handler = new Kismet_MCP_Servers_Handler();
+if (class_exists("Kismet_MCP_Servers_Handler_Safe")) {
+    $handler = new Kismet_MCP_Servers_Handler_Safe();
     
     // Use reflection to call private method
     $reflection = new ReflectionClass($handler);
@@ -312,8 +306,8 @@ if (class_exists("Kismet_MCP_Servers_Handler")) {
 require_once(__DIR__ . "/wp-load.php");
 
 // Get the LLMS.txt handler and generate content
-if (class_exists("Kismet_LLMS_Txt_Handler")) {
-    $handler = new Kismet_LLMS_Txt_Handler();
+if (class_exists("Kismet_LLMS_Txt_Handler_Safe")) {
+    $handler = new Kismet_LLMS_Txt_Handler_Safe();
     
     // Use reflection to call private method
     $reflection = new ReflectionClass($handler);
