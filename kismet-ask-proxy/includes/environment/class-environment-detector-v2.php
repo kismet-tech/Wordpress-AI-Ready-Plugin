@@ -16,7 +16,7 @@ require_once(plugin_dir_path(__FILE__) . 'class-system-checker.php');
 require_once(plugin_dir_path(__FILE__) . 'class-plugin-detector.php'); 
 require_once(plugin_dir_path(__FILE__) . 'class-endpoint-tester.php');
 require_once(plugin_dir_path(__FILE__) . 'class-report-generator.php');
-require_once(plugin_dir_path(__FILE__) . 'class-route-tester.php');
+require_once(plugin_dir_path(__FILE__) . '../shared/class-route-tester.php');
 
 class Kismet_Environment_Detector_V2 {
     

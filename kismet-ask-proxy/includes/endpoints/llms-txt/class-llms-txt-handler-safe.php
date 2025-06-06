@@ -23,12 +23,20 @@ class Kismet_LLMS_Txt_Handler_Safe {
     private $route_tester;
     
     /**
+     * File safety manager instance
+     * @var Kismet_File_Safety_Manager
+     */
+    private $file_safety_manager;
+    
+    /**
      * Constructor
      */
     public function __construct() {
         // Load the route tester
-        require_once(plugin_dir_path(__FILE__) . 'class-route-tester.php');
+        require_once(plugin_dir_path(__FILE__) . '../../shared/class-route-tester.php');
+        require_once(plugin_dir_path(__FILE__) . '../../shared/class-file-safety-manager.php');
         $this->route_tester = new Kismet_Route_Tester();
+        $this->file_safety_manager = new Kismet_File_Safety_Manager();
     }
     
     /**

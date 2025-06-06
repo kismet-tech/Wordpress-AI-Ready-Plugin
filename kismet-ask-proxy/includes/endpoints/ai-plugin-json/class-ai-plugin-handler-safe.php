@@ -13,8 +13,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-require_once(plugin_dir_path(__FILE__) . 'class-route-tester.php');
-require_once(plugin_dir_path(__FILE__) . 'class-file-safety-manager.php');
+require_once(plugin_dir_path(__FILE__) . '../../shared/class-route-tester.php');
+require_once(plugin_dir_path(__FILE__) . '../../shared/class-file-safety-manager.php');
 
 class Kismet_AI_Plugin_Handler_Safe {
     

@@ -25,18 +25,18 @@ define('KISMET_PLUGIN_PATH', plugin_dir_path(__FILE__));
 define('KISMET_PLUGIN_URL', plugin_dir_url(__FILE__));
 
 // Include our modular handler classes
-require_once KISMET_PLUGIN_PATH . 'includes/class-robots-handler.php';
-require_once KISMET_PLUGIN_PATH . 'includes/class-ai-plugin-handler.php';
-require_once KISMET_PLUGIN_PATH . 'includes/class-ask-handler.php';
-require_once KISMET_PLUGIN_PATH . 'includes/class-mcp-servers-handler.php';
-require_once KISMET_PLUGIN_PATH . 'includes/class-llms-txt-handler.php';
+require_once KISMET_PLUGIN_PATH . 'includes/endpoints/robots-txt/class-robots-handler.php';
+require_once KISMET_PLUGIN_PATH . 'includes/endpoints/ai-plugin-json/class-ai-plugin-handler.php';
+require_once KISMET_PLUGIN_PATH . 'includes/endpoints/ask/class-ask-handler.php';
+require_once KISMET_PLUGIN_PATH . 'includes/endpoints/mcp-servers-json/class-mcp-servers-handler.php';
+require_once KISMET_PLUGIN_PATH . 'includes/endpoints/llms-txt/class-llms-txt-handler.php';
 
 // Include modular environment detection system
-require_once KISMET_PLUGIN_PATH . 'includes/class-system-checker.php';
-require_once KISMET_PLUGIN_PATH . 'includes/class-plugin-detector.php';
-require_once KISMET_PLUGIN_PATH . 'includes/class-endpoint-tester.php';
-require_once KISMET_PLUGIN_PATH . 'includes/class-report-generator.php';
-require_once KISMET_PLUGIN_PATH . 'includes/class-environment-detector-v2.php';
+require_once KISMET_PLUGIN_PATH . 'includes/environment/class-system-checker.php';
+require_once KISMET_PLUGIN_PATH . 'includes/environment/class-plugin-detector.php';
+require_once KISMET_PLUGIN_PATH . 'includes/environment/class-endpoint-tester.php';
+require_once KISMET_PLUGIN_PATH . 'includes/environment/class-report-generator.php';
+require_once KISMET_PLUGIN_PATH . 'includes/environment/class-environment-detector-v2.php';
 
 /**
  * Main plugin class - coordinates all handlers
