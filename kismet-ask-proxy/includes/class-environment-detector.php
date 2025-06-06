@@ -43,6 +43,7 @@ class Kismet_Environment_Detector {
         $this->check_php_compatibility();
         $this->check_file_permissions();
         $this->detect_existing_well_known_conflicts();
+        $this->check_mcp_servers_functionality();
         $this->scan_security_plugins();
         $this->identify_caching_plugins();
         $this->check_multisite_configuration();
@@ -217,6 +218,67 @@ class Kismet_Environment_Detector {
         
         if (!empty($conflicts)) {
             $this->environment_report['warnings'][] = "Existing .well-known files detected - plugin will coexist safely";
+        }
+    }
+    
+    /**
+     * Check MCP servers functionality and endpoint accessibility
+     */
+    private function check_mcp_servers_functionality() {
+        $wordpress_root = ABSPATH;
+        $well_known_dir = $wordpress_root . '.well-known';
+        $mcp_dir = $well_known_dir . '/mcp';
+        
+        $mcp_status = array(
+            'mcp_directory_writable' => false,
+            'can_create_mcp_directory' => false,
+            'mcp_servers_handler_available' => class_exists('Kismet_MCP_Servers_Handler'),
+            'endpoint_accessible' => false
+        );
+        
+        // Check if we can create/write to MCP directory
+        if (file_exists($mcp_dir)) {
+            $mcp_status['mcp_directory_writable'] = is_writable($mcp_dir);
+        } elseif (file_exists($well_known_dir) && is_writable($well_known_dir)) {
+            // Test if we can create the MCP directory
+            $test_result = @mkdir($mcp_dir, 0755, true);
+            if ($test_result) {
+                $mcp_status['can_create_mcp_directory'] = true;
+                $mcp_status['mcp_directory_writable'] = is_writable($mcp_dir);
+                @rmdir($mcp_dir); // Clean up test directory
+            }
+        }
+        
+        // Test MCP servers endpoint accessibility (if handler is available)
+        if ($mcp_status['mcp_servers_handler_available']) {
+            $site_url = get_site_url();
+            $mcp_endpoint = $site_url . '/.well-known/mcp/servers.json';
+            
+            // Simple connectivity test
+            $response = wp_remote_get($mcp_endpoint, array(
+                'timeout' => 5,
+                'sslverify' => true
+            ));
+            
+            $mcp_status['endpoint_accessible'] = !is_wp_error($response) && 
+                                               wp_remote_retrieve_response_code($response) === 200;
+        }
+        
+        $overall_mcp_status = ($mcp_status['mcp_directory_writable'] || $mcp_status['can_create_mcp_directory']) && 
+                             $mcp_status['mcp_servers_handler_available'];
+        
+        $this->environment_report['checks']['mcp_servers_functionality'] = array(
+            'status' => $overall_mcp_status ? 'functional' : 'limited',
+            'details' => $mcp_status,
+            'endpoint_url' => get_site_url() . '/.well-known/mcp/servers.json'
+        );
+        
+        if (!$overall_mcp_status) {
+            $this->environment_report['warnings'][] = "MCP servers functionality may be limited due to file permissions or missing handler";
+        }
+        
+        if ($mcp_status['mcp_servers_handler_available'] && !$mcp_status['endpoint_accessible']) {
+            $this->environment_report['warnings'][] = "MCP servers endpoint may not be accessible - check server configuration";
         }
     }
     
@@ -548,7 +610,7 @@ class Kismet_Environment_Detector {
             $status = isset($result['status']) ? strtolower($result['status']) : 'unknown';
             $icon = '❔';
             $status_class = '';
-            if ($status === 'compatible' || $status === 'writable' || $status === 'none_detected' || $status === 'sufficient' || $status === 'single_site' || $status === 'detected' || $status === 'clear' || $status === 'accessible' || $status === 'connected' || $status === 'fully_compatible') {
+            if ($status === 'compatible' || $status === 'writable' || $status === 'none_detected' || $status === 'sufficient' || $status === 'single_site' || $status === 'detected' || $status === 'clear' || $status === 'accessible' || $status === 'connected' || $status === 'fully_compatible' || $status === 'functional') {
                 $icon = '✅';
                 $status_class = 'kismet-status-pass';
             } elseif ($status === 'incompatible' || $status === 'restricted' || $status === 'conflicts_detected' || $status === 'limited' || $status === 'plugins_detected') {
@@ -575,6 +637,12 @@ class Kismet_Environment_Detector {
                     break;
                 case 'well_known_conflicts':
                     $summary = ($result['status'] === 'clear') ? 'No .well-known conflicts.' : 'Conflicts detected with existing .well-known files.';
+                    break;
+                case 'mcp_servers_functionality':
+                    $summary = ($result['status'] === 'functional') ? 'MCP servers endpoint is functional.' : 'MCP servers functionality is limited.';
+                    if (isset($result['endpoint_url'])) {
+                        $summary .= ' Endpoint: ' . $result['endpoint_url'];
+                    }
                     break;
                 case 'security_plugins':
                     $summary = ($result['status'] === 'none_detected') ? 'No security plugins detected.' : 'Security plugins detected. May require configuration.';

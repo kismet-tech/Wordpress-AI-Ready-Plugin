@@ -1,5 +1,13 @@
 <?php
 /**
+ * Kismet Ask Proxy Plugin
+ *
+ * NOTE: This plugin now includes a dedicated admin page ('Kismet Env') in the WordPress dashboard sidebar.
+ * Use this page to diagnose and report environment or plugin issues.
+ * When adding new features, ensure any relevant status, errors, or diagnostics are surfaced on this page for visibility.
+ */
+
+/**
  * Plugin Name: Kismet Ask Proxy
  * Description: Creates an AI-ready /ask page that serves both API requests and human visitors with Kismet branding.
  * Version: 1.0
@@ -20,6 +28,8 @@ define('KISMET_PLUGIN_URL', plugin_dir_url(__FILE__));
 require_once KISMET_PLUGIN_PATH . 'includes/class-robots-handler.php';
 require_once KISMET_PLUGIN_PATH . 'includes/class-ai-plugin-handler.php';
 require_once KISMET_PLUGIN_PATH . 'includes/class-ask-handler.php';
+require_once KISMET_PLUGIN_PATH . 'includes/class-environment-detector.php';
+require_once KISMET_PLUGIN_PATH . 'includes/class-mcp-servers-handler.php';
 
 /**
  * Main plugin class - coordinates all handlers
@@ -29,12 +39,14 @@ class Kismet_Ask_Proxy_Plugin {
     private $robots_handler;
     private $ai_plugin_handler;
     private $ask_handler;
+    private $mcp_servers_handler;
     
     public function __construct() {
         // Initialize all our handler classes
         $this->robots_handler = new Kismet_Robots_Handler();
         $this->ai_plugin_handler = new Kismet_AI_Plugin_Handler();
         $this->ask_handler = new Kismet_Ask_Handler();
+        $this->mcp_servers_handler = new Kismet_MCP_Servers_Handler();
     
         // Add a "Settings" link to the plugin row
         add_filter('plugin_action_links_' . plugin_basename(__FILE__), array($this, 'add_settings_link'));
@@ -53,6 +65,35 @@ class Kismet_Ask_Proxy_Plugin {
 // Initialize the plugin
 new Kismet_Ask_Proxy_Plugin();
 
+// Add admin notices for environment compatibility
+add_action('admin_notices', 'kismet_display_environment_notices');
+
+/**
+ * Display environment compatibility notices in admin
+ */
+function kismet_display_environment_notices() {
+    // Check for activation warning
+    $activation_warning = get_option('kismet_activation_warning');
+    if ($activation_warning) {
+        echo '<div class="notice notice-warning is-dismissible">';
+        echo '<p><strong>Kismet Plugin:</strong> ' . esc_html($activation_warning) . '</p>';
+        echo '<p><a href="' . esc_url(admin_url('options-general.php?page=kismet-ai-plugin-settings')) . '">View compatibility report</a></p>';
+        echo '</div>';
+        // Clear the warning after showing it once
+        delete_option('kismet_activation_warning');
+    }
+    
+    // Show environment report on plugin settings page
+    $screen = get_current_screen();
+    if ($screen && strpos($screen->id, 'kismet-ai-plugin-settings') !== false) {
+        $environment_report = get_option('kismet_environment_report');
+        if ($environment_report) {
+            $environment_detector = new Kismet_Environment_Detector();
+            echo $environment_detector->get_admin_report_html();
+        }
+    }
+}
+
 // === ACTIVATION & DEACTIVATION HOOKS ===
 
 /**
@@ -61,18 +102,44 @@ new Kismet_Ask_Proxy_Plugin();
 register_activation_hook(__FILE__, function() {
     error_log('Kismet Ask Proxy Plugin Activated');
     
-    // Create physical .well-known directory and file to bypass web server blocking
-    kismet_create_physical_ai_plugin_file();
+    // Run comprehensive environment check before proceeding
+    $environment_detector = new Kismet_Environment_Detector();
+    $compatibility_report = $environment_detector->run_full_environment_check();
+    
+    // Log the compatibility report
+    error_log('Kismet Environment Check: ' . $compatibility_report['overall_status']);
+    if (!empty($compatibility_report['errors'])) {
+        error_log('Kismet Environment Errors: ' . implode(', ', $compatibility_report['errors']));
+    }
+    if (!empty($compatibility_report['warnings'])) {
+        error_log('Kismet Environment Warnings: ' . implode(', ', $compatibility_report['warnings']));
+    }
+    
+    // Store the compatibility report for admin display
+    update_option('kismet_environment_report', $compatibility_report);
+    
+    // Proceed with activation only if environment is compatible
+    if ($environment_detector->is_environment_compatible()) {
+        // Create physical .well-known directory and files to bypass web server blocking
+        kismet_create_physical_well_known_files();
+            
+        // Flush rewrite rules for ai-plugin.json and mcp/servers.json
+        $ai_plugin_handler = new Kismet_AI_Plugin_Handler();
+        $ai_plugin_handler->flush_rewrite_rules();
         
-    // Flush rewrite rules for ai-plugin.json
-    $ai_plugin_handler = new Kismet_AI_Plugin_Handler();
-    $ai_plugin_handler->flush_rewrite_rules();
-    
-    // Force a hard flush after a delay to ensure rules are properly registered
-    wp_schedule_single_event(time() + 5, 'kismet_delayed_flush');
-    
-    // Send registration notification to Kismet backend
-    kismet_register_plugin_activation();
+        $mcp_servers_handler = new Kismet_MCP_Servers_Handler();
+        $mcp_servers_handler->flush_rewrite_rules();
+        
+        // Force a hard flush after a delay to ensure rules are properly registered
+        wp_schedule_single_event(time() + 5, 'kismet_delayed_flush');
+        
+        // Send registration notification to Kismet backend
+        kismet_register_plugin_activation();
+    } else {
+        error_log('Kismet Plugin Activation: Environment incompatible - some features may not work properly');
+        // Don't fail activation completely, but warn that some features may not work
+        add_option('kismet_activation_warning', 'Environment compatibility issues detected during activation');
+    }
 });
 
 /**
@@ -89,8 +156,8 @@ add_action('kismet_delayed_flush', function() {
 register_deactivation_hook(__FILE__, function() {
     error_log('Kismet Ask Proxy Plugin Deactivated');
     
-    // Remove physical .well-known file
-    kismet_remove_physical_ai_plugin_file();
+    // Remove physical .well-known files
+    kismet_remove_physical_well_known_files();
     
     flush_rewrite_rules();
 });
@@ -98,13 +165,16 @@ register_deactivation_hook(__FILE__, function() {
 // === PHYSICAL FILE CREATION FUNCTIONALITY ===
 
 /**
- * Create physical .well-known/ai-plugin.json file to bypass web server blocking
+ * Create physical .well-known files (ai-plugin.json and mcp/servers.json) to bypass web server blocking
  */
-function kismet_create_physical_ai_plugin_file() {
+function kismet_create_physical_well_known_files() {
     $wordpress_root = ABSPATH;
     $well_known_dir = $wordpress_root . '.well-known';
+    $mcp_dir = $well_known_dir . '/mcp';
     $ai_plugin_php_file = $well_known_dir . '/ai-plugin-handler.php';
+    $mcp_servers_php_file = $mcp_dir . '/servers-handler.php';
     $htaccess_file = $well_known_dir . '/.htaccess';
+    $mcp_htaccess_file = $mcp_dir . '/.htaccess';
     
     error_log("KISMET DEBUG: Creating physical files in: $well_known_dir");
     
@@ -114,6 +184,16 @@ function kismet_create_physical_ai_plugin_file() {
             error_log("KISMET DEBUG: Created .well-known directory");
         } else {
             error_log("KISMET ERROR: Failed to create .well-known directory");
+            return false;
+        }
+    }
+    
+    // Create .well-known/mcp directory if it doesn't exist
+    if (!file_exists($mcp_dir)) {
+        if (wp_mkdir_p($mcp_dir)) {
+            error_log("KISMET DEBUG: Created .well-known/mcp directory");
+        } else {
+            error_log("KISMET ERROR: Failed to create .well-known/mcp directory");
             return false;
         }
     }
@@ -155,6 +235,57 @@ if (class_exists("Kismet_AI_Plugin_Handler")) {
     ], JSON_PRETTY_PRINT);
 }
 ?>';
+
+    // Create the MCP servers PHP handler file
+    $mcp_php_content = '<?php
+/**
+ * Kismet MCP Servers JSON Handler - Generated by Kismet Ask Proxy Plugin
+ * This file provides the mcp/servers.json content by calling WordPress functions
+ */
+
+// Load WordPress
+require_once(__DIR__ . "/../../wp-load.php");
+
+// Get the MCP servers handler and generate JSON
+if (class_exists("Kismet_MCP_Servers_Handler")) {
+    $handler = new Kismet_MCP_Servers_Handler();
+    
+    // Use reflection to call private method
+    $reflection = new ReflectionClass($handler);
+    $method = $reflection->getMethod("serve_mcp_servers_json");
+    $method->setAccessible(true);
+    $method->invoke($handler);
+} else {
+    // Fallback basic JSON if plugin not loaded
+    header("Content-Type: application/json");
+    http_response_code(200);
+    echo json_encode([
+        "schema_version" => "1.0",
+        "last_updated" => date("c"),
+        "publisher" => [
+            "name" => "' . get_bloginfo('name') . '",
+            "url" => "' . get_site_url() . '",
+            "contact_email" => "' . get_option('admin_email') . '"
+        ],
+        "servers" => [
+            [
+                "name" => "Kismet Hotel Assistant",
+                "description" => "Hotel information and booking assistance",
+                "url" => "' . get_site_url() . '/ask",
+                "type" => "hotel_assistant",
+                "version" => "1.0",
+                "capabilities" => ["room_availability", "pricing_information", "amenities_information", "booking_assistance", "general_inquiries"],
+                "authentication" => ["type" => "none"],
+                "trusted" => true
+            ]
+        ],
+        "metadata" => [
+            "total_servers" => 1,
+            "generated_by" => "Kismet WordPress Plugin"
+        ]
+    ], JSON_PRETTY_PRINT);
+}
+?>';
     
     // Create .htaccess rule to rewrite ai-plugin.json to our PHP handler
     $our_htaccess_rules = '
@@ -162,37 +293,60 @@ if (class_exists("Kismet_AI_Plugin_Handler")) {
 RewriteEngine On
 RewriteRule ^ai-plugin\.json$ ai-plugin-handler.php [L]
 # END Kismet AI Plugin';
+
+    // Create .htaccess rule for MCP directory to rewrite servers.json
+    $mcp_htaccess_rules = '
+# BEGIN Kismet MCP Servers
+RewriteEngine On
+RewriteRule ^servers\.json$ servers-handler.php [L]
+# END Kismet MCP Servers';
     
-    // Write the PHP file
-    $php_success = file_put_contents($ai_plugin_php_file, $php_content);
+    // Write the PHP files
+    $ai_php_success = file_put_contents($ai_plugin_php_file, $php_content);
+    $mcp_php_success = file_put_contents($mcp_servers_php_file, $mcp_php_content);
     
-    // Handle .htaccess more carefully - preserve existing content
+    // Handle .htaccess files more carefully - preserve existing content
     $htaccess_success = kismet_add_htaccess_rules($htaccess_file, $our_htaccess_rules);
+    $mcp_htaccess_success = kismet_add_htaccess_rules($mcp_htaccess_file, $mcp_htaccess_rules);
     
-    if ($php_success && $htaccess_success) {
-        error_log("KISMET DEBUG: Successfully created ai-plugin PHP handler and .htaccess");
+    if ($ai_php_success && $mcp_php_success && $htaccess_success && $mcp_htaccess_success) {
+        error_log("KISMET DEBUG: Successfully created all PHP handlers and .htaccess files");
         return true;
     } else {
-        error_log("KISMET ERROR: Failed to write files - PHP: " . ($php_success ? 'OK' : 'FAIL') . ", .htaccess: " . ($htaccess_success ? 'OK' : 'FAIL'));
+        error_log("KISMET ERROR: Failed to write files - AI PHP: " . ($ai_php_success ? 'OK' : 'FAIL') . 
+                  ", MCP PHP: " . ($mcp_php_success ? 'OK' : 'FAIL') . 
+                  ", .htaccess: " . ($htaccess_success ? 'OK' : 'FAIL') . 
+                  ", MCP .htaccess: " . ($mcp_htaccess_success ? 'OK' : 'FAIL'));
         return false;
     }
 }
 
 /**
- * Remove physical .well-known/ai-plugin.json file on deactivation
+ * Remove physical .well-known files on deactivation
  */
-function kismet_remove_physical_ai_plugin_file() {
+function kismet_remove_physical_well_known_files() {
     $wordpress_root = ABSPATH;
     $well_known_dir = $wordpress_root . '.well-known';
+    $mcp_dir = $well_known_dir . '/mcp';
     $ai_plugin_php_file = $well_known_dir . '/ai-plugin-handler.php';
+    $mcp_servers_php_file = $mcp_dir . '/servers-handler.php';
     $htaccess_file = $well_known_dir . '/.htaccess';
+    $mcp_htaccess_file = $mcp_dir . '/.htaccess';
     
-    // Remove PHP handler file
+    // Remove PHP handler files
     if (file_exists($ai_plugin_php_file)) {
         if (unlink($ai_plugin_php_file)) {
             error_log("KISMET DEBUG: Removed ai-plugin-handler.php file");
         } else {
             error_log("KISMET ERROR: Failed to remove ai-plugin-handler.php file");
+        }
+    }
+    
+    if (file_exists($mcp_servers_php_file)) {
+        if (unlink($mcp_servers_php_file)) {
+            error_log("KISMET DEBUG: Removed mcp/servers-handler.php file");
+        } else {
+            error_log("KISMET ERROR: Failed to remove mcp/servers-handler.php file");
         }
     }
     
@@ -203,6 +357,20 @@ function kismet_remove_physical_ai_plugin_file() {
         } else {
             error_log("KISMET ERROR: Failed to remove Kismet rules from .htaccess file");
         }
+    }
+    
+    if (file_exists($mcp_htaccess_file)) {
+        if (kismet_remove_htaccess_rules($mcp_htaccess_file)) {
+            error_log("KISMET DEBUG: Removed Kismet rules from .well-known/mcp/.htaccess");
+        } else {
+            error_log("KISMET ERROR: Failed to remove Kismet rules from mcp/.htaccess file");
+        }
+    }
+    
+    // Try to remove mcp directory if empty
+    if (file_exists($mcp_dir) && count(scandir($mcp_dir)) == 2) { // only . and ..
+        rmdir($mcp_dir);
+        error_log("KISMET DEBUG: Removed empty .well-known/mcp directory");
     }
     
     // Try to remove .well-known directory if empty
@@ -255,9 +423,11 @@ function kismet_remove_htaccess_rules($htaccess_file) {
     
     $content = file_get_contents($htaccess_file);
     
-    // Remove our section using regex
-    $pattern = '/\n?# BEGIN Kismet AI Plugin.*?# END Kismet AI Plugin\n?/s';
-    $new_content = preg_replace($pattern, '', $content);
+    // Remove our sections using regex (both AI Plugin and MCP Servers)
+    $ai_pattern = '/\n?# BEGIN Kismet AI Plugin.*?# END Kismet AI Plugin\n?/s';
+    $mcp_pattern = '/\n?# BEGIN Kismet MCP Servers.*?# END Kismet MCP Servers\n?/s';
+    $new_content = preg_replace($ai_pattern, '', $content);
+    $new_content = preg_replace($mcp_pattern, '', $new_content);
     
     // If the content is now empty or just whitespace, delete the file
     if (trim($new_content) === '') {
@@ -332,3 +502,22 @@ function kismet_register_plugin_activation() {
         }
     }
 }
+
+add_action('admin_menu', function() {
+    add_menu_page(
+        'Kismet Environment Report',         // Page title
+        'Kismet Env',                        // Menu title
+        'manage_options',                    // Capability
+        'kismet-env-report',                 // Menu slug
+        function() {                         // Callback to display content
+            if (class_exists('Kismet_Environment_Detector')) {
+                $detector = new Kismet_Environment_Detector();
+                echo $detector->get_admin_report_html();
+            } else {
+                echo '<div class="notice notice-error"><p>Kismet_Environment_Detector class not found.</p></div>';
+            }
+        },
+        'dashicons-shield-alt',              // Icon (optional)
+        80                                   // Position (optional)
+    );
+});

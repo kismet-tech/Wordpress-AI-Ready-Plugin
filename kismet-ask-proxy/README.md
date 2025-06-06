@@ -259,3 +259,11 @@ The plugin uses a modular approach:
 - **Ask Handler** (`includes/class-ask-handler.php`): /ask page and API proxy
 
 This separation ensures that issues with one feature don't affect others, making debugging and maintenance much easier.
+
+## Environment Compatibility Report
+
+After installing and activating the plugin, you will see a **'Kismet Env'** menu item in the WordPress admin sidebar.
+
+- Click this menu to view the full environment compatibility report.
+- The report displays errors, warnings, and recommendations from the environment checks.
+- This ensures you and your clients can always verify the plugin's compatibility and health after any install or update.
