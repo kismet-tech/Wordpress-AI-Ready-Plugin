@@ -1,318 +1,241 @@
 <?php
 /**
- * Handles .well-known/mcp/servers.json functionality for MCP (Model Context Protocol) discovery
- * - URL rewrite rules for /.well-known/mcp/servers.json
- * - Lists trusted MCP servers for the hotel
- * - Follows RFC 8615 well-known URI specification
- * - Settings integration for server configuration
+ * Kismet MCP Servers Handler - Safe Version
+ * 
+ * This is the bulletproof implementation that performs comprehensive testing
+ * before creating the /.well-known/mcp/servers.json endpoint.
+ * 
+ * Safety Features:
+ * - Tests route accessibility before implementation
+ * - Uses File Safety Manager for conflict-free file operations
+ * - Chooses optimal approach (file vs rewrite) based on environment
+ * - Comprehensive error handling and logging
  */
 
-if (!defined('ABSPATH')) {
-    exit;
-}
+// Load safety utilities
+require_once(plugin_dir_path(__FILE__) . '../../shared/class-route-tester.php');
+require_once(plugin_dir_path(__FILE__) . '../../shared/class-file-safety-manager.php');
 
 class Kismet_MCP_Servers_Handler {
+
+    /**
+     * Route tester instance
+     * @var Kismet_Route_Tester
+     */
+    private $route_tester;
     
+    /**
+     * File safety manager instance
+     * @var Kismet_File_Safety_Manager
+     */
+    private $file_safety_manager;
+    
+    /**
+     * Constructor
+     */
     public function __construct() {
-        // Set up URL routing and request handling
-        add_action('init', array($this, 'add_mcp_servers_rewrite'));
-        add_filter('query_vars', array($this, 'add_query_vars'));
+        $this->route_tester = new Kismet_Route_Tester();
+        $this->file_safety_manager = new Kismet_File_Safety_Manager();
         
-        // Direct request interception - catches requests before WordPress routing
-        add_action('parse_request', array($this, 'intercept_mcp_servers_request'));
-        
-        // Fallback handler for rewrite rule approach
-        add_action('template_redirect', array($this, 'handle_mcp_servers_request'));
-        
-        // Admin settings integration
-        add_action('admin_init', array($this, 'settings_init'));
+        // Hook into WordPress init to safely create endpoint
+        add_action('init', array($this, 'safe_endpoint_creation'));
     }
-    
+
     /**
-     * Add rewrite rule for .well-known/mcp/servers.json
+     * Safely create the MCP servers endpoint using comprehensive testing
+     * 
+     * DECISION LOGIC:
+     * 1. CHECK: Does the route already work? (is_route_active)
+     * 2. CHECK: Does the physical file exist? (file_exists) 
+     * 3. CHECK: How does the hosting environment serve files? (determine_serving_method)
+     * 4. DECIDE: Use physical file OR WordPress rewrite based on environment capabilities
+     * 
+     * IMPLEMENTATION APPROACHES:
+     * - Physical File: nginx/apache serves .json files directly from filesystem
+     * - WordPress Rewrite: PHP intercepts requests and serves dynamic content
      */
-    public function add_mcp_servers_rewrite() {
-        error_log('KISMET DEBUG: add_mcp_servers_rewrite() called');
+    public function safe_endpoint_creation() {
+        $target_url = '/.well-known/mcp/servers.json';
+        $file_path = ABSPATH . '.well-known/mcp/servers.json';
         
-        // Add rewrite rule with optional trailing slash
-        add_rewrite_rule('\.well-known/mcp/servers\.json/?$', 'index.php?kismet_mcp_servers=1', 'top');
+        error_log("KISMET SAFE: Starting MCP servers endpoint creation for: " . $target_url);
         
-        error_log('KISMET DEBUG: Rewrite rule added for \.well-known/mcp/servers\.json/?$');
+        // Step 1: Quick check - is route already working?
+        if ($this->route_tester->is_route_active($target_url)) {
+            error_log("KISMET SAFE: MCP servers route already accessible, skipping creation");
+            return;
+        }
+        
+        // Step 2: Check if physical file exists (might exist but not be served correctly)
+        $file_exists = file_exists($file_path);
+        error_log("KISMET SAFE: Physical file exists: " . ($file_exists ? 'YES' : 'NO'));
+        
+        // Step 3: Test environment capabilities to determine best approach
+        error_log("KISMET SAFE: Testing environment capabilities...");
+        $test_results = $this->route_tester->determine_serving_method($target_url);
+        $recommended_approach = $test_results['recommended_approach'] ?? 'wordpress_rewrite';
+        error_log("KISMET SAFE: Environment recommends: " . $recommended_approach);
+        
+        // Step 4: Implement using recommended approach first, then fallback
+        if ($recommended_approach === 'physical_file') {
+            // Environment supports direct file serving
+            if ($this->try_physical_file_approach($file_path)) {
+                error_log("KISMET SAFE: MCP servers physical file approach successful");
+                return;
+            }
+            // Fallback to WordPress rewrite
+            if ($this->try_wordpress_rewrite_approach()) {
+                error_log("KISMET SAFE: MCP servers WordPress rewrite fallback successful");
+                return;
+            }
+        } else {
+            // Environment prefers WordPress rewrite (or physical files failed in testing)
+            if ($this->try_wordpress_rewrite_approach()) {
+                error_log("KISMET SAFE: MCP servers WordPress rewrite approach successful");
+                return;
+            }
+            // Fallback to physical file
+            if ($this->try_physical_file_approach($file_path)) {
+                error_log("KISMET SAFE: MCP servers physical file fallback successful");
+                return;
+            }
+        }
+        
+        error_log("KISMET SAFE ERROR: All MCP servers endpoint creation methods failed");
+        error_log("KISMET SAFE DEBUG: Test results: " . json_encode($test_results, JSON_PRETTY_PRINT));
     }
     
     /**
-     * Add query variable for MCP servers endpoint
+     * Try creating physical file approach
      */
-    public function add_query_vars($vars) {
-        $vars[] = 'kismet_mcp_servers';
-        return $vars;
+    private function try_physical_file_approach($file_path) {
+        try {
+            // Use file safety manager for conflict-free creation
+            $content = $this->generate_mcp_servers_json();
+            
+            if ($this->file_safety_manager->safe_file_create($file_path, $content)) {
+                // Test if the file is actually accessible
+                if ($this->route_tester->is_route_active('/.well-known/mcp/servers.json')) {
+                    return true;
+                }
+                error_log("KISMET SAFE: MCP servers file created but not accessible via HTTP");
+            }
+            return false;
+        } catch (Exception $e) {
+            error_log("KISMET SAFE ERROR: MCP servers physical file creation failed: " . $e->getMessage());
+            return false;
+        }
     }
     
     /**
-     * Direct request interception - catches /.well-known/mcp/servers.json before WordPress routing
+     * Try WordPress rewrite rule approach
+     */
+    private function try_wordpress_rewrite_approach() {
+        try {
+            // Add rewrite rule for MCP servers
+            add_rewrite_rule('\.well-known/mcp/servers\.json/?$', 'index.php?kismet_mcp_servers=1', 'top');
+            
+            // Add query var
+            add_filter('query_vars', function($vars) {
+                $vars[] = 'kismet_mcp_servers';
+                return $vars;
+            });
+            
+            // Handle the request with multiple interceptors for reliability
+            add_action('parse_request', array($this, 'intercept_mcp_servers_request'));
+            add_action('template_redirect', array($this, 'handle_mcp_servers_request'));
+            
+            // Flush rewrite rules to activate
+            flush_rewrite_rules();
+            
+            // Test if rewrite is working
+            if ($this->route_tester->is_route_active('/.well-known/mcp/servers.json')) {
+                return true;
+            }
+            
+            error_log("KISMET SAFE: MCP servers WordPress rewrite rule added but not accessible");
+            return false;
+        } catch (Exception $e) {
+            error_log("KISMET SAFE ERROR: MCP servers WordPress rewrite approach failed: " . $e->getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * Intercept MCP servers request early (parse_request level)
      */
     public function intercept_mcp_servers_request($wp) {
         $request_uri = $_SERVER['REQUEST_URI'] ?? '';
         
-        error_log("KISMET DEBUG: intercept_mcp_servers_request called for URI: $request_uri");
-        
-        // Check if this is a request for our mcp/servers.json
         if (preg_match('#^/\.well-known/mcp/servers\.json/?(\?.*)?$#', $request_uri)) {
-            error_log("KISMET DEBUG: Intercepted .well-known/mcp/servers.json request directly");
-            
-            $this->serve_mcp_servers_json();
+            $this->serve_mcp_servers_content();
             exit;
         }
     }
     
     /**
-     * Handle MCP servers request via template redirect (fallback method)
+     * Handle MCP servers request via WordPress (template_redirect level)
      */
     public function handle_mcp_servers_request() {
-        $query_var = get_query_var('kismet_mcp_servers');
-        $request_uri = $_SERVER['REQUEST_URI'] ?? '';
-        
-        error_log("KISMET DEBUG: handle_mcp_servers_request called for URI: $request_uri");
-        error_log("KISMET DEBUG: kismet_mcp_servers query var = " . ($query_var ? 'TRUE' : 'FALSE'));
-        
-        if ($query_var) {
-            error_log("KISMET DEBUG: Serving mcp/servers.json");
-            
-            $this->serve_mcp_servers_json();
+        if (get_query_var('kismet_mcp_servers')) {
+            $this->serve_mcp_servers_content();
             exit;
         }
     }
     
     /**
-     * Serve the MCP servers.json content
+     * Serve MCP servers content (common method for both interceptors)
      */
-    private function serve_mcp_servers_json() {
-        $site_url = get_site_url();
-        $site_name = get_bloginfo('name');
-        
-        // Get configured MCP servers from WordPress options
-        $custom_servers = get_option('kismet_mcp_custom_servers', array());
-        
-        // Build default Kismet MCP server configuration
-        $default_servers = array(
-            array(
-                'name' => 'Kismet Hotel Assistant',
-                'description' => 'Hotel information and booking assistance for ' . $site_name,
-                'url' => $site_url . '/ask',
-                'type' => 'hotel_assistant',
-                'version' => '1.0',
-                'capabilities' => array(
-                    'room_availability',
-                    'pricing_information', 
-                    'amenities_information',
-                    'booking_assistance',
-                    'general_inquiries'
-                ),
-                'authentication' => array(
-                    'type' => 'none'
-                ),
-                'contact' => array(
-                    'email' => get_option('admin_email'),
-                    'website' => $site_url
-                ),
-                'trusted' => true,
-                'last_verified' => current_time('c') // ISO 8601 format
-            )
-        );
-        
-        // Merge custom servers with defaults
-        $all_servers = array_merge($default_servers, $custom_servers);
-        
-        // Build the MCP servers.json structure following RFC 8615
-        $mcp_servers = array(
-            'schema_version' => '1.0',
-            'last_updated' => current_time('c'),
-            'publisher' => array(
-                'name' => $site_name,
-                'url' => $site_url,
-                'contact_email' => get_option('admin_email')
-            ),
-            'servers' => $all_servers,
-            'metadata' => array(
-                'total_servers' => count($all_servers),
-                'generated_by' => 'Kismet WordPress Plugin',
-                'specification' => 'RFC 8615 Well-Known URIs',
-                'purpose' => 'MCP server discovery for hotel services'
-            )
-        );
-        
-        // Set proper headers and serve JSON
-        status_header(200);
+    private function serve_mcp_servers_content() {
         header('Content-Type: application/json');
-        header('Cache-Control: public, max-age=3600'); // Cache for 1 hour
-        header('Access-Control-Allow-Origin: *'); // Allow cross-origin requests for discovery
+        header('Access-Control-Allow-Origin: *');
+        header('Access-Control-Allow-Methods: GET, OPTIONS');
+        header('Access-Control-Allow-Headers: Content-Type');
         
-        echo json_encode($mcp_servers, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+            http_response_code(200);
+            exit;
+        }
         
-        error_log('KISMET DEBUG: Served MCP servers.json with ' . count($all_servers) . ' servers');
+        echo $this->generate_mcp_servers_json();
     }
     
     /**
-     * Flush rewrite rules for MCP servers endpoint
+     * Generate MCP servers JSON content
      */
-    public function flush_rewrite_rules() {
-        $this->add_mcp_servers_rewrite();
-        flush_rewrite_rules();
-    }
-    
-    /**
-     * Initialize admin settings for MCP servers configuration
-     */
-    public function settings_init() {
-        // Add settings section to existing Kismet settings page
-        add_settings_section(
-            'kismet_mcp_servers_section',
-            'MCP Servers Configuration',
-            array($this, 'mcp_servers_section_callback'),
-            'kismet_ai_plugin_settings'
-        );
-        
-        // Add custom servers field
-        add_settings_field(
-            'kismet_mcp_custom_servers',
-            'Additional MCP Servers (JSON)',
-            array($this, 'custom_servers_render'),
-            'kismet_ai_plugin_settings',
-            'kismet_mcp_servers_section'
-        );
-        
-        // Register the setting
-        register_setting(
-            'kismet_ai_plugin_settings_group',
-            'kismet_mcp_custom_servers',
-            array(
-                'sanitize_callback' => array($this, 'sanitize_custom_servers')
+    private function generate_mcp_servers_json() {
+        $servers_data = array(
+            "schema_version" => "1.0",
+            "last_updated" => current_time('c'),
+            "publisher" => array(
+                "name" => get_bloginfo('name'),
+                "url" => get_site_url(),
+                "contact_email" => get_option('admin_email')
+            ),
+            "servers" => array(
+                array(
+                    "name" => "Kismet Hotel Assistant",
+                    "description" => "Hotel information and booking assistance",
+                    "url" => get_site_url() . "/ask",
+                    "type" => "hotel_assistant",
+                    "version" => "1.0",
+                    "capabilities" => array(
+                        "room_availability",
+                        "pricing_information", 
+                        "amenities_information",
+                        "booking_assistance",
+                        "general_inquiries"
+                    ),
+                    "authentication" => array("type" => "none"),
+                    "trusted" => true
+                )
+            ),
+            "metadata" => array(
+                "total_servers" => 1,
+                "generated_by" => "Kismet WordPress Plugin"
             )
         );
-    }
-    
-    /**
-     * Section callback for MCP servers settings
-     */
-    public function mcp_servers_section_callback() {
-        echo '<p>Configure additional MCP (Model Context Protocol) servers to be published in your .well-known/mcp/servers.json file. The default Kismet hotel assistant server is always included.</p>';
-        echo '<p><strong>Current MCP servers endpoint:</strong> <a href="' . esc_url(get_site_url() . '/.well-known/mcp/servers.json') . '" target="_blank">' . esc_html(get_site_url() . '/.well-known/mcp/servers.json') . '</a></p>';
-    }
-    
-    /**
-     * Render custom servers input field
-     */
-    public function custom_servers_render() {
-        $custom_servers = get_option('kismet_mcp_custom_servers', array());
-        $json_value = !empty($custom_servers) ? json_encode($custom_servers, JSON_PRETTY_PRINT) : '';
         
-        echo '<textarea name="kismet_mcp_custom_servers" rows="10" cols="80" class="large-text code">' . esc_textarea($json_value) . '</textarea>';
-        echo '<p class="description">Enter additional MCP servers as a JSON array. Example:</p>';
-        echo '<pre><code>[
-  {
-    "name": "Custom Hotel Service",
-    "description": "Additional hotel services",
-    "url": "https://api.example.com/mcp",
-    "type": "custom_service",
-    "version": "1.0",
-    "capabilities": ["custom_feature"],
-    "authentication": {"type": "none"},
-    "trusted": true
-  }
-]</code></pre>';
-    }
-    
-    /**
-     * Sanitize and validate custom servers JSON input
-     */
-    public function sanitize_custom_servers($input) {
-        if (empty($input)) {
-            return array();
-        }
-        
-        // Attempt to decode JSON
-        $decoded = json_decode($input, true);
-        
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            add_settings_error(
-                'kismet_mcp_custom_servers',
-                'invalid_json',
-                'Invalid JSON format for custom MCP servers: ' . json_last_error_msg()
-            );
-            return get_option('kismet_mcp_custom_servers', array());
-        }
-        
-        // Validate that it's an array
-        if (!is_array($decoded)) {
-            add_settings_error(
-                'kismet_mcp_custom_servers',
-                'not_array',
-                'Custom MCP servers must be a JSON array'
-            );
-            return get_option('kismet_mcp_custom_servers', array());
-        }
-        
-        // Validate each server entry
-        $validated_servers = array();
-        foreach ($decoded as $index => $server) {
-            if (!is_array($server)) {
-                add_settings_error(
-                    'kismet_mcp_custom_servers',
-                    'invalid_server_' . $index,
-                    'Server entry ' . ($index + 1) . ' must be an object'
-                );
-                continue;
-            }
-            
-            // Required fields validation
-            if (empty($server['name']) || empty($server['url'])) {
-                add_settings_error(
-                    'kismet_mcp_custom_servers',
-                    'missing_required_' . $index,
-                    'Server entry ' . ($index + 1) . ' is missing required "name" or "url" field'
-                );
-                continue;
-            }
-            
-            // Sanitize URL
-            $server['url'] = esc_url_raw($server['url']);
-            if (empty($server['url'])) {
-                add_settings_error(
-                    'kismet_mcp_custom_servers',
-                    'invalid_url_' . $index,
-                    'Server entry ' . ($index + 1) . ' has an invalid URL'
-                );
-                continue;
-            }
-            
-            // Sanitize other fields
-            $server['name'] = sanitize_text_field($server['name']);
-            $server['description'] = isset($server['description']) ? sanitize_textarea_field($server['description']) : '';
-            $server['type'] = isset($server['type']) ? sanitize_text_field($server['type']) : 'custom';
-            $server['version'] = isset($server['version']) ? sanitize_text_field($server['version']) : '1.0';
-            
-            $validated_servers[] = $server;
-        }
-        
-        return $validated_servers;
-    }
-    
-    /**
-     * Get the current MCP servers configuration for display
-     */
-    public function get_servers_summary() {
-        $site_url = get_site_url();
-        $site_name = get_bloginfo('name');
-        $custom_servers = get_option('kismet_mcp_custom_servers', array());
-        
-        $summary = array(
-            'endpoint_url' => $site_url . '/.well-known/mcp/servers.json',
-            'default_server_count' => 1, // Kismet hotel assistant
-            'custom_server_count' => count($custom_servers),
-            'total_servers' => 1 + count($custom_servers),
-            'last_updated' => current_time('c')
-        );
-        
-        return $summary;
+        return json_encode($servers_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
     }
 } 
