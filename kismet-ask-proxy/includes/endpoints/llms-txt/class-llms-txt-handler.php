@@ -37,81 +37,114 @@ class Kismet_LLMS_Txt_Handler {
         require_once(plugin_dir_path(__FILE__) . '../../shared/class-file-safety-manager.php');
         $this->route_tester = new Kismet_Route_Tester();
         $this->file_safety_manager = new Kismet_File_Safety_Manager();
+        
+        // Hook into WordPress init to safely create LLMS.txt
+        add_action('init', array($this, 'safe_llms_creation'));
+    }
+
+    /**
+     * Safely create LLMS.txt using comprehensive testing
+     * 
+     * DECISION LOGIC:
+     * 1. CHECK: Does /llms.txt already work? (is_route_active)
+     * 2. CHECK: Does physical llms.txt file exist? (file_exists)
+     * 3. CHECK: How does hosting serve llms.txt? (determine_serving_method)
+     * 4. DECIDE: Create physical file OR use WordPress rewrite
+     * 
+     * IMPLEMENTATION APPROACHES:
+     * - Physical File: nginx/apache serves llms.txt directly, we create file
+     * - WordPress Rewrite: WordPress generates llms.txt, we use rewrite rules
+     */
+    public function safe_llms_creation() {
+        error_log("KISMET: Starting LLMS.txt creation");
+        
+        $llms_file = ABSPATH . 'llms.txt';
+        
+        // Step 1: Quick check - is LLMS.txt already working?
+        $route_accessible = $this->route_tester->is_route_active('/llms.txt');
+        error_log("KISMET: LLMS.txt accessible: " . ($route_accessible ? 'YES' : 'NO'));
+        
+        // Step 2: Check if physical file exists
+        $file_exists = file_exists($llms_file);
+        error_log("KISMET: Physical llms.txt exists: " . ($file_exists ? 'YES' : 'NO'));
+        
+        // Step 3: If no route and no file, determine best approach via environment testing
+        if (!$route_accessible && !$file_exists) {
+            error_log("KISMET: No llms.txt found, testing environment capabilities...");
+            $test_results = $this->route_tester->determine_serving_method('/llms.txt');
+            $recommended_approach = $test_results['recommended_approach'] ?? 'wordpress_rewrite';
+            error_log("KISMET: Environment recommends: " . $recommended_approach);
+            
+            if ($recommended_approach === 'physical_file') {
+                // Environment supports direct file serving
+                if ($this->try_physical_file_creation()) {
+                    error_log("KISMET: LLMS.txt physical file creation successful");
+                    return;
+                }
+            }
+            // Use WordPress rewrite approach (recommended or fallback)
+            $this->use_wordpress_rewrite_approach();
+            error_log("KISMET: Using WordPress rewrite approach for LLMS.txt");
+            return;
+        }
+        
+        // Step 4: Route works but file might need creation - try physical file approach first
+        if ($route_accessible && !$file_exists) {
+            if ($this->try_physical_file_creation()) {
+                error_log("KISMET: LLMS.txt physical file creation successful");
+                return;
+            }
+        }
+        
+        // Step 5: If route works and file exists, we're done
+        if ($route_accessible && $file_exists) {
+            error_log("KISMET: LLMS.txt already working, no action needed");
+            return;
+        }
+        
+        // Step 6: Fallback to WordPress rewrite approach
+        $this->use_wordpress_rewrite_approach();
+        error_log("KISMET: Using WordPress rewrite approach for LLMS.txt");
     }
     
     /**
-     * Safely deploy LLMS.txt endpoint using bulletproof testing
-     * 
-     * @return array Deployment results
+     * Try creating physical LLMS.txt file
      */
-    public function deploy_safely() {
-        $deployment_result = array(
-            'success' => false,
-            'approach_used' => null,
-            'test_results' => array(),
-            'errors' => array(),
-            'warnings' => array()
-        );
-        
-        // STEP 1: Test route BEFORE making any changes
-        $test_content = $this->get_llms_txt_content();
-        $test_results = $this->route_tester->test_root_route('llms.txt', $test_content);
-        
-        $deployment_result['test_results'] = $test_results;
-        
-        // Log the test results for diagnostics
-        $this->route_tester->log_test_results($test_results, 'llms_txt_deployment');
-        
-        // STEP 2: Only proceed if testing indicates we can succeed
-        if (!$test_results['can_proceed']) {
-            $deployment_result['errors'][] = 'Route testing failed - cannot safely deploy LLMS.txt';
-            $deployment_result['errors'] = array_merge(
-                $deployment_result['errors'], 
-                $test_results['errors'] ?? array()
-            );
-            return $deployment_result;
-        }
-        
-        // STEP 3: Use the recommended approach from testing
-        $approach = $test_results['recommended_approach'];
-        $deployment_result['approach_used'] = $approach;
-        
+    private function try_physical_file_creation() {
         try {
-            if ($approach === 'wordpress_rewrite') {
-                $success = $this->deploy_wordpress_rewrite();
-            } elseif ($approach === 'physical_file') {
-                $success = $this->deploy_physical_file();
-            } else {
-                throw new Exception('Unknown deployment approach: ' . $approach);
-            }
+            $llms_file = ABSPATH . 'llms.txt';
             
-            $deployment_result['success'] = $success;
-            
-            if ($success) {
-                // Verify the actual deployment works
-                $verification = $this->verify_deployment();
-                if (!$verification['success']) {
-                    $deployment_result['warnings'][] = 'Deployment completed but verification failed';
-                    $deployment_result['warnings'] = array_merge(
-                        $deployment_result['warnings'],
-                        $verification['errors'] ?? array()
-                    );
+            // Check if our content is already there
+            if (file_exists($llms_file)) {
+                $existing_content = file_get_contents($llms_file);
+                if (strpos($existing_content, '# LLMS.txt - AI Policy') !== false) {
+                    error_log("KISMET: LLMS.txt already contains our content");
+                    return true;
                 }
             }
             
+            // Create new LLMS.txt with our content
+            $content = $this->get_llms_txt_content();
+            
+            if ($this->file_safety_manager->safe_file_create($llms_file, $content)) {
+                // Test if the file is accessible
+                if ($this->route_tester->is_route_active('/llms.txt')) {
+                    return true;
+                }
+                error_log("KISMET: LLMS.txt file created but not accessible via HTTP");
+            }
+            
+            return false;
         } catch (Exception $e) {
-            $deployment_result['errors'][] = 'Deployment failed: ' . $e->getMessage();
+            error_log("KISMET ERROR: LLMS.txt physical file creation failed: " . $e->getMessage());
+            return false;
         }
-        
-        return $deployment_result;
     }
     
     /**
-     * Deploy using WordPress rewrite rules
-     * 
-     * @return bool Success
+     * Use WordPress rewrite approach for LLMS.txt
      */
-    private function deploy_wordpress_rewrite() {
+    private function use_wordpress_rewrite_approach() {
         // Add rewrite rule for /llms.txt
         add_rewrite_rule('^llms\.txt$', 'index.php?kismet_llms_txt=1', 'top');
         
@@ -123,38 +156,6 @@ class Kismet_LLMS_Txt_Handler {
         
         // Flush rewrite rules
         flush_rewrite_rules();
-        
-        return true;
-    }
-    
-    /**
-     * Deploy using physical file with bulletproof safety
-     * 
-     * @return bool Success
-     */
-    private function deploy_physical_file() {
-        $file_path = ABSPATH . 'llms.txt';
-        $content = $this->get_llms_txt_content();
-        
-        try {
-            // Use file safety manager for bulletproof file creation
-            $result = $this->file_safety_manager->safe_file_create(
-                $file_path, 
-                $content, 
-                Kismet_File_Safety_Manager::POLICY_CONTENT_ANALYSIS
-            );
-            
-            if ($result['success']) {
-                // Store metadata for cleanup tracking
-                $this->store_file_metadata($file_path, $content);
-                return true;
-            } else {
-                throw new Exception('File safety manager failed: ' . implode(', ', $result['errors']));
-            }
-            
-        } catch (Exception $e) {
-            throw new Exception('Physical file deployment failed: ' . $e->getMessage());
-        }
     }
     
     /**
@@ -195,111 +196,7 @@ class Kismet_LLMS_Txt_Handler {
         }
     }
     
-    /**
-     * Verify that the deployment actually works
-     * 
-     * @return array Verification results
-     */
-    private function verify_deployment() {
-        $site_url = get_site_url();
-        $llms_url = $site_url . '/llms.txt';
-        
-        $response = wp_remote_get($llms_url, array(
-            'timeout' => 10,
-            'sslverify' => true
-        ));
-        
-        $result = array(
-            'success' => false,
-            'response_code' => null,
-            'content_valid' => false,
-            'errors' => array()
-        );
-        
-        if (is_wp_error($response)) {
-            $result['errors'][] = 'HTTP request failed: ' . $response->get_error_message();
-            return $result;
-        }
-        
-        $result['response_code'] = wp_remote_retrieve_response_code($response);
-        
-        if ($result['response_code'] !== 200) {
-            $result['errors'][] = 'HTTP response code: ' . $result['response_code'];
-            return $result;
-        }
-        
-        $content = wp_remote_retrieve_body($response);
-        $result['content_valid'] = (strpos($content, 'MCP-SERVER:') !== false);
-        
-        if (!$result['content_valid']) {
-            $result['errors'][] = 'Content does not contain expected MCP-SERVER directive';
-            return $result;
-        }
-        
-        $result['success'] = true;
-        return $result;
-    }
-    
-    /**
-     * Store file metadata for cleanup tracking
-     * 
-     * @param string $file_path File path
-     * @param string $content File content
-     */
-    private function store_file_metadata($file_path, $content) {
-        $metadata = array(
-            'file_path' => $file_path,
-            'content_hash' => md5($content),
-            'created_at' => current_time('mysql'),
-            'created_by' => 'kismet-ask-proxy'
-        );
-        
-        $existing_files = get_option('kismet_created_files', array());
-        $existing_files[] = $metadata;
-        
-        update_option('kismet_created_files', $existing_files);
-    }
-    
-    /**
-     * Clean up deployed resources (for uninstall)
-     * 
-     * @return array Cleanup results
-     */
-    public function cleanup() {
-        $results = array(
-            'files_removed' => 0,
-            'errors' => array()
-        );
-        
-        // Get files we created
-        $created_files = get_option('kismet_created_files', array());
-        
-        foreach ($created_files as $file_meta) {
-            if (isset($file_meta['file_path']) && 
-                basename($file_meta['file_path']) === 'llms.txt') {
-                
-                $file_path = $file_meta['file_path'];
-                
-                if (file_exists($file_path)) {
-                    // Verify it's still our file
-                    $current_content = file_get_contents($file_path);
-                    $expected_hash = $file_meta['content_hash'] ?? '';
-                    
-                    if (md5($current_content) === $expected_hash) {
-                        if (@unlink($file_path)) {
-                            $results['files_removed']++;
-                        } else {
-                            $results['errors'][] = 'Failed to remove file: ' . $file_path;
-                        }
-                    } else {
-                        $results['errors'][] = 'File content changed - not removing: ' . $file_path;
-                    }
-                }
-            }
-        }
-        
-        return $results;
-    }
+
 
 
 } 
