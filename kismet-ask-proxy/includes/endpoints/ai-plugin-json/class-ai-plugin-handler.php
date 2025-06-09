@@ -249,6 +249,9 @@ class Kismet_AI_Plugin_Handler {
         $query_var = get_query_var('kismet_ai_plugin');
         
         if ($query_var) {
+            // Track this request using the reusable helper
+            Kismet_Endpoint_Tracking_Helper::track_standard_endpoint('/.well-known/ai-plugin.json');
+            
             $this->serve_ai_plugin_content();
             exit;
         }

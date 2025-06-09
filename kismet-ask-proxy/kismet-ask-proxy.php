@@ -1,18 +1,36 @@
 <?php
 /**
- * Kismet Ask Proxy Plugin
- *
- * NOTE: This plugin now includes a dedicated admin page ('Kismet Env') in the WordPress dashboard sidebar.
- * Use this page to diagnose and report environment or plugin issues.
- * When adding new features, ensure any relevant status, errors, or diagnostics are surfaced on this page for visibility.
- */
-
-/**
  * Plugin Name: Kismet Ask Proxy
  * Description: Creates an AI-ready /ask page that serves both API requests and human visitors with Kismet branding.
  * Version: 1.0
  * Author: Kismet
  * License: GPL2+
+ */
+
+/**
+ * LICENSE INFORMATION
+ * Copyright (C) 2025 Kismet
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
+
+/**
+ * PLUGIN CONTEXT & USAGE NOTES
+ * This plugin now includes a dedicated admin page ('Kismet Env') in the WordPress dashboard sidebar.
+ * Use this page to diagnose and report environment or plugin issues.
+ * When adding new features, ensure any relevant status, errors, or diagnostics are surfaced on this page for visibility.
  */
 
 // Prevent direct access
@@ -38,6 +56,21 @@ require_once KISMET_PLUGIN_PATH . 'includes/environment/class-endpoint-tester.ph
 require_once KISMET_PLUGIN_PATH . 'includes/environment/class-report-generator.php';
 require_once KISMET_PLUGIN_PATH . 'includes/environment/class-environment-detector-v2.php';
 
+// Include tracking system
+require_once KISMET_PLUGIN_PATH . 'includes/shared/class-event-types.php';
+require_once KISMET_PLUGIN_PATH . 'includes/tracking/class-bot-detector.php';
+require_once KISMET_PLUGIN_PATH . 'includes/tracking/class-bot-classifier.php';
+require_once KISMET_PLUGIN_PATH . 'includes/tracking/class-metric-builder.php';
+require_once KISMET_PLUGIN_PATH . 'includes/tracking/class-event-tracker.php';
+require_once KISMET_PLUGIN_PATH . 'includes/tracking/class-endpoint-tracking-helper.php';
+require_once KISMET_PLUGIN_PATH . 'includes/shared/class-universal-tracker.php';
+
+// Include admin interface
+require_once KISMET_PLUGIN_PATH . 'includes/admin/class-tracking-settings.php';
+
+// Initialize admin interface with settings link
+new Kismet_Tracking_Settings();
+
 /**
  * Main plugin class - coordinates all handlers
  */
@@ -56,18 +89,16 @@ class Kismet_Ask_Proxy_Plugin {
         $this->ask_handler = new Kismet_Ask_Handler();
         $this->mcp_servers_handler = new Kismet_MCP_Servers_Handler();
         $this->llms_txt_handler = new Kismet_LLMS_Txt_Handler();
-    
-        // Add a "Settings" link to the plugin row
-        add_filter('plugin_action_links_' . plugin_basename(__FILE__), array($this, 'add_settings_link'));
+
+        // Initialize tracking system
+        $this->init_tracking();
     }
     
     /**
-     * Add "Settings" link to plugin actions in the plugins list
+     * Initialize automatic tracking for AI endpoints
      */
-    public function add_settings_link($links) {
-        $settings_link = '<a href="options-general.php?page=kismet-ai-plugin-settings">Settings</a>';
-        array_unshift($links, $settings_link);
-        return $links;
+    private function init_tracking() {
+        $universal_tracker = new Kismet_Universal_Tracker();
     }
 }
 
@@ -103,6 +134,25 @@ function kismet_display_environment_notices() {
     }
 }
 
+add_action('admin_menu', function() {
+    add_menu_page(
+        'Kismet Environment Report',         // Page title
+        'Kismet Env',                        // Menu title
+        'manage_options',                    // Capability
+        'kismet-env-report',                 // Menu slug
+        function() {                         // Callback to display content
+            if (class_exists('Kismet_Environment_Detector_V2')) {
+                $detector = new Kismet_Environment_Detector_V2();
+                echo $detector->get_admin_report_html();
+            } else {
+                echo '<div class="notice notice-error"><p>Kismet_Environment_Detector_V2 class not found.</p></div>';
+            }
+        },
+        'dashicons-shield-alt',              // Icon (optional)
+        80                                   // Position (optional)
+    );
+});
+
 // === ACTIVATION & DEACTIVATION HOOKS ===
 
 /**
@@ -127,6 +177,14 @@ register_activation_hook(__FILE__, function() {
     // Store the compatibility report for admin display
     update_option('kismet_environment_report', $compatibility_report);
     
+    // Set default tracking options
+    if (get_option('kismet_enable_local_bot_filtering') === false) {
+        add_option('kismet_enable_local_bot_filtering', false);
+    }
+    if (get_option('kismet_backend_endpoint') === false) {
+        add_option('kismet_backend_endpoint', '');
+    }
+    
     // Proceed with activation only if environment is compatible
     if ($environment_detector->is_environment_compatible()) {
         // All handlers handle their setup automatically via 'init' action
@@ -141,6 +199,12 @@ register_activation_hook(__FILE__, function() {
         
         // Send registration notification to Kismet backend
         kismet_register_plugin_activation();
+        
+        // Track plugin activation
+        Kismet_Event_Tracker::track_endpoint_access(
+            Kismet_Event_Types::PLUGIN_ACTIVATION, 
+            'plugin_activation'
+        );
     } else {
         error_log('Kismet Plugin Activation: Environment incompatible - some features may not work properly');
         // Don't fail activation completely, but warn that some features may not work
@@ -581,22 +645,3 @@ function kismet_register_plugin_activation() {
         }
     }
 }
-
-add_action('admin_menu', function() {
-    add_menu_page(
-        'Kismet Environment Report',         // Page title
-        'Kismet Env',                        // Menu title
-        'manage_options',                    // Capability
-        'kismet-env-report',                 // Menu slug
-        function() {                         // Callback to display content
-            if (class_exists('Kismet_Environment_Detector_V2')) {
-                $detector = new Kismet_Environment_Detector_V2();
-                echo $detector->get_admin_report_html();
-            } else {
-                echo '<div class="notice notice-error"><p>Kismet_Environment_Detector_V2 class not found.</p></div>';
-            }
-        },
-        'dashicons-shield-alt',              // Icon (optional)
-        80                                   // Position (optional)
-    );
-});

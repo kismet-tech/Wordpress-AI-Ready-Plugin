@@ -190,6 +190,9 @@ class Kismet_LLMS_Txt_Handler {
      */
     public function handle_llms_request() {
         if (get_query_var('kismet_llms_txt')) {
+            // Track this request using the reusable helper
+            Kismet_Endpoint_Tracking_Helper::track_standard_endpoint('/llms.txt');
+            
             header('Content-Type: text/plain');
             echo $this->get_llms_txt_content();
             exit;

@@ -1,0 +1,20 @@
+# Test files
+test-*.php
+test-*.sh
+test-endpoints.*
+
+# Temporary files
+temp/
+*.tmp
+*.log
+
+# Development files
+.DS_Store
+*.swp
+*.swo
+*~
+
+# IDE files
+.vscode/
+.idea/
+*.sublime-* 
