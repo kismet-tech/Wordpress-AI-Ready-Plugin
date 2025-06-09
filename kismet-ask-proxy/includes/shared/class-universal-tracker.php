@@ -60,7 +60,16 @@ class Kismet_Universal_Tracker {
     public function intercept_request() {
         $request_uri = $_SERVER['REQUEST_URI'] ?? '';
         
-        // Parse path without query parameters
+        // Check for .htaccess rewrite query parameter first
+        $kismet_endpoint = $_GET['kismet_endpoint'] ?? null;
+        
+        if ($kismet_endpoint) {
+            error_log("KISMET DEBUG: Handling .htaccess rewrite for endpoint: {$kismet_endpoint}");
+            $this->handle_htaccess_rewrite($kismet_endpoint, $request_uri);
+            return;
+        }
+        
+        // Parse path without query parameters for regular requests
         $path = parse_url($request_uri, PHP_URL_PATH);
         
         // DEBUG: Log all requests to see what's being intercepted
@@ -76,6 +85,94 @@ class Kismet_Universal_Tracker {
                 );
                 break;
             }
+        }
+    }
+    
+    /**
+     * Handle requests that came through .htaccess rewrite rules
+     */
+    private function handle_htaccess_rewrite($endpoint, $request_uri) {
+        $endpoint_mapping = array(
+            'robots' => array(
+                'event_type' => Kismet_Event_Types::PLUGIN_ROBOTS_TXT_ACCESS,
+                'path' => '/robots.txt'
+            ),
+            'llms' => array(
+                'event_type' => Kismet_Event_Types::PLUGIN_LLMS_TXT_ACCESS,
+                'path' => '/llms.txt'
+            ),
+            'ai_plugin' => array(
+                'event_type' => Kismet_Event_Types::PLUGIN_AI_PLUGIN_MANIFEST_ACCESS,
+                'path' => '/.well-known/ai-plugin.json'
+            ),
+            'mcp_servers' => array(
+                'event_type' => Kismet_Event_Types::PLUGIN_MCP_SERVERS_ACCESS,
+                'path' => '/.well-known/mcp/servers'
+            )
+        );
+        
+        if (isset($endpoint_mapping[$endpoint])) {
+            $mapping = $endpoint_mapping[$endpoint];
+            error_log("KISMET DEBUG: Tracking .htaccess rewrite - Endpoint: {$endpoint}, Event: {$mapping['event_type']}");
+            
+            // Track the access
+            Kismet_Event_Tracker::track_endpoint_access(
+                $mapping['event_type'],
+                $mapping['path'],
+                array(
+                    'full_request_uri' => $request_uri,
+                    'source' => 'htaccess_rewrite'
+                )
+            );
+            
+            // Now serve the actual content by delegating to the appropriate handler
+            $this->serve_content_for_endpoint($endpoint);
+        } else {
+            error_log("KISMET DEBUG: Unknown .htaccess endpoint: {$endpoint}");
+        }
+    }
+    
+    /**
+     * Serve the actual content for rewritten endpoints
+     */
+    private function serve_content_for_endpoint($endpoint) {
+        switch ($endpoint) {
+            case 'robots':
+                // Delegate to robots handler
+                if (class_exists('Kismet_Robots_Handler')) {
+                    $handler = new Kismet_Robots_Handler();
+                    $handler->handle_robots_request();
+                }
+                break;
+                
+            case 'llms':
+                // Delegate to LLMS handler
+                if (class_exists('Kismet_LLMS_Handler')) {
+                    $handler = new Kismet_LLMS_Handler();
+                    $handler->handle_llms_request();
+                }
+                break;
+                
+            case 'ai_plugin':
+                // Delegate to AI Plugin handler
+                if (class_exists('Kismet_AI_Plugin_Handler')) {
+                    $handler = new Kismet_AI_Plugin_Handler();
+                    $handler->handle_ai_plugin_request();
+                }
+                break;
+                
+            case 'mcp_servers':
+                // Delegate to MCP handler
+                if (class_exists('Kismet_MCP_Handler')) {
+                    $handler = new Kismet_MCP_Handler();
+                    $handler->handle_mcp_request();
+                }
+                break;
+                
+            default:
+                // Unknown endpoint - send 404
+                status_header(404);
+                exit;
         }
     }
     

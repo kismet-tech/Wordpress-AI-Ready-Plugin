@@ -63,6 +63,7 @@ require_once KISMET_PLUGIN_PATH . 'includes/tracking/class-bot-classifier.php';
 require_once KISMET_PLUGIN_PATH . 'includes/tracking/class-metric-builder.php';
 require_once KISMET_PLUGIN_PATH . 'includes/tracking/class-event-tracker.php';
 require_once KISMET_PLUGIN_PATH . 'includes/tracking/class-endpoint-tracking-helper.php';
+require_once KISMET_PLUGIN_PATH . 'includes/tracking/class-htaccess-manager.php';
 require_once KISMET_PLUGIN_PATH . 'includes/shared/class-universal-tracker.php';
 
 // Include admin interface
@@ -123,6 +124,24 @@ function kismet_display_environment_notices() {
         delete_option('kismet_activation_warning');
     }
     
+    // Check for .htaccess activation notice
+    $htaccess_notice = get_option('kismet_htaccess_activation_notice');
+    if ($htaccess_notice) {
+        if ($htaccess_notice === 'added') {
+            echo '<div class="notice notice-success is-dismissible">';
+            echo '<p><strong>Kismet Plugin:</strong> Successfully added .htaccess tracking rules for comprehensive AI bot tracking!</p>';
+            echo '<p>All endpoints (including robots.txt, llms.txt) will now be tracked even when physical files exist.</p>';
+            echo '</div>';
+        } else if ($htaccess_notice === 'failed') {
+            echo '<div class="notice notice-error is-dismissible">';
+            echo '<p><strong>Kismet Plugin:</strong> Failed to add .htaccess tracking rules. Please check file permissions.</p>';
+            echo '<p>You may need to manually add tracking rules or use the test script.</p>';
+            echo '</div>';
+        }
+        // Clear the notice after showing it once
+        delete_option('kismet_htaccess_activation_notice');
+    }
+    
     // Show environment report on plugin settings page
     $screen = get_current_screen();
     if ($screen && strpos($screen->id, 'kismet-ai-plugin-settings') !== false) {
@@ -160,6 +179,18 @@ add_action('admin_menu', function() {
  */
 register_activation_hook(__FILE__, function() {
     error_log('Kismet Ask Proxy Plugin Activated');
+    
+    // Add .htaccess tracking rules for comprehensive endpoint coverage
+    if (class_exists('Kismet_Htaccess_Manager')) {
+        $htaccess_result = Kismet_Htaccess_Manager::add_tracking_rules();
+        if ($htaccess_result) {
+            error_log('Kismet: Successfully added .htaccess tracking rules during activation');
+            update_option('kismet_htaccess_activation_notice', 'added');
+        } else {
+            error_log('Kismet: Failed to add .htaccess tracking rules - check file permissions');
+            update_option('kismet_htaccess_activation_notice', 'failed');
+        }
+    }
     
     // Run comprehensive environment check before proceeding
     $environment_detector = new Kismet_Environment_Detector_V2();
@@ -225,6 +256,16 @@ add_action('kismet_delayed_flush', function() {
  */
 register_deactivation_hook(__FILE__, function() {
     error_log('Kismet Ask Proxy Plugin Deactivated');
+    
+    // Remove new .htaccess tracking rules
+    if (class_exists('Kismet_Htaccess_Manager')) {
+        $htaccess_result = Kismet_Htaccess_Manager::remove_tracking_rules();
+        if ($htaccess_result) {
+            error_log('Kismet: Successfully removed .htaccess tracking rules during deactivation');
+        } else {
+            error_log('Kismet: Failed to remove .htaccess tracking rules');
+        }
+    }
     
     // Remove physical .well-known files
     kismet_remove_physical_well_known_files();
