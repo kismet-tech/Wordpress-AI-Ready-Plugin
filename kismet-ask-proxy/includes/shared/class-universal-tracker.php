@@ -23,12 +23,16 @@ require_once(plugin_dir_path(__FILE__) . 'class-event-types.php');   // Event ty
 class Kismet_Universal_Tracker {
     
     private $route_mapping;
+    private static $hooks_registered = false;
+    private static $instance_count = 0;
+    private static $execution_count = 0;
     
     public function __construct() {
-        error_log("KISMET DEBUG: Universal Tracker constructor called");
+        self::$instance_count++;
+        error_log("KISMET DEBUG: Universal Tracker constructor called - Instance #" . self::$instance_count);
         $this->setup_route_mapping();
         $this->register_hooks();
-        error_log("KISMET DEBUG: Universal Tracker initialization complete");
+        error_log("KISMET DEBUG: Universal Tracker initialization complete - Total instances: " . self::$instance_count);
     }
     
     /**
@@ -49,8 +53,15 @@ class Kismet_Universal_Tracker {
      * Register WordPress hooks to intercept requests
      */
     private function register_hooks() {
+        // Prevent duplicate hook registration
+        if (self::$hooks_registered) {
+            error_log("KISMET DEBUG: Universal Tracker hooks already registered, skipping");
+            return;
+        }
+        
         // Hook into request parsing to catch all requests that reach WordPress
         add_action('parse_request', array($this, 'intercept_request'), 1);
+        self::$hooks_registered = true;
         error_log("KISMET DEBUG: Registered parse_request hook for Universal Tracker");
     }
     
@@ -58,30 +69,64 @@ class Kismet_Universal_Tracker {
      * Check incoming request against tracked endpoints
      */
     public function intercept_request() {
+        self::$execution_count++;
         $request_uri = $_SERVER['REQUEST_URI'] ?? '';
+        $user_agent = $_SERVER['HTTP_USER_AGENT'] ?? 'unknown';
+        $timestamp = date('Y-m-d H:i:s');
+        
+        error_log("KISMET DEBUG: intercept_request called - Execution #" . self::$execution_count . " for URI: {$request_uri}");
+        
+        // CRITICAL BUG FIX: Prevent duplicate tracking per request
+        // Create unique identifier for this specific request
+        $request_id = md5($request_uri . ($_GET['kismet_endpoint'] ?? '') . $_SERVER['REQUEST_TIME']);
+        static $processed_requests = array();
+        
+        if (isset($processed_requests[$request_id])) {
+            error_log("KISMET DEBUG: DUPLICATE REQUEST BLOCKED - Already processed request ID: {$request_id}");
+            return; // Early exit to prevent duplicate tracking
+        }
+        $processed_requests[$request_id] = true;
+        error_log("KISMET DEBUG: NEW REQUEST - Processing request ID: {$request_id}");
+        
+        // ROBOTS.TXT DEBUGGING: Track all robots.txt related requests
+        if (strpos($request_uri, 'robots.txt') !== false) {
+            error_log("ROBOTS DEBUG [{$timestamp}]: Request intercepted - URI: {$request_uri}, User-Agent: {$user_agent}");
+        }
         
         // Check for .htaccess rewrite query parameter first
         $kismet_endpoint = $_GET['kismet_endpoint'] ?? null;
         
         if ($kismet_endpoint) {
+            if ($kismet_endpoint === 'robots') {
+                error_log("ROBOTS DEBUG [{$timestamp}]: .htaccess rewrite detected for robots.txt");
+            }
             error_log("KISMET DEBUG: Handling .htaccess rewrite for endpoint: {$kismet_endpoint}");
             $this->handle_htaccess_rewrite($kismet_endpoint, $request_uri);
-            return;
+            return; // IMPORTANT: Return early to prevent duplicate tracking
         }
         
         // Parse path without query parameters for regular requests
         $path = parse_url($request_uri, PHP_URL_PATH);
         
+        // ROBOTS.TXT DEBUGGING: Track direct path matches
+        if ($path === '/robots.txt') {
+            error_log("ROBOTS DEBUG [{$timestamp}]: Direct path match for /robots.txt - URI: {$request_uri}");
+        }
+        
+        // ONLY process non-rewrite requests to prevent duplicates
         // DEBUG: Log all requests to see what's being intercepted
         error_log("KISMET DEBUG: Universal Tracker intercepted request - Path: {$path}, Full URI: {$request_uri}");
         
         foreach ($this->route_mapping as $tracked_path => $event_type) {
             if ($this->path_matches($path, $tracked_path)) {
+                if ($tracked_path === '/robots.txt') {
+                    error_log("ROBOTS DEBUG [{$timestamp}]: Triggering tracking event for robots.txt");
+                }
                 error_log("KISMET DEBUG: Path matched! Tracked: {$tracked_path}, Event: {$event_type}");
                 Kismet_Event_Tracker::track_endpoint_access(
                     $event_type,
                     $tracked_path,
-                    array('full_request_uri' => $request_uri)
+                    array('full_request_uri' => $request_uri, 'source' => 'direct_wordpress_request')
                 );
                 break;
             }
@@ -138,35 +183,19 @@ class Kismet_Universal_Tracker {
     private function serve_content_for_endpoint($endpoint) {
         switch ($endpoint) {
             case 'robots':
-                // Delegate to robots handler
-                if (class_exists('Kismet_Robots_Handler')) {
-                    $handler = new Kismet_Robots_Handler();
-                    $handler->handle_robots_request();
-                }
+                $this->serve_robots_content();
                 break;
                 
             case 'llms':
-                // Delegate to LLMS handler
-                if (class_exists('Kismet_LLMS_Handler')) {
-                    $handler = new Kismet_LLMS_Handler();
-                    $handler->handle_llms_request();
-                }
+                $this->serve_llms_content();
                 break;
                 
             case 'ai_plugin':
-                // Delegate to AI Plugin handler
-                if (class_exists('Kismet_AI_Plugin_Handler')) {
-                    $handler = new Kismet_AI_Plugin_Handler();
-                    $handler->handle_ai_plugin_request();
-                }
+                $this->serve_ai_plugin_content();
                 break;
                 
             case 'mcp_servers':
-                // Delegate to MCP handler
-                if (class_exists('Kismet_MCP_Handler')) {
-                    $handler = new Kismet_MCP_Handler();
-                    $handler->handle_mcp_request();
-                }
+                $this->serve_mcp_servers_content();
                 break;
                 
             default:
@@ -174,6 +203,146 @@ class Kismet_Universal_Tracker {
                 status_header(404);
                 exit;
         }
+    }
+
+    /**
+     * Serve robots.txt content
+     */
+    private function serve_robots_content() {
+        header('Content-Type: text/plain');
+        
+        // Check if physical robots.txt exists first
+        $robots_file = ABSPATH . 'robots.txt';
+        if (file_exists($robots_file)) {
+            $content = file_get_contents($robots_file);
+            echo $content;
+        } else {
+            // Generate default WordPress robots.txt with AI enhancements
+            $site_url = get_site_url();
+            $content = "User-agent: *
+Disallow: /wp-admin/
+Allow: /wp-admin/admin-ajax.php
+
+Sitemap: {$site_url}/wp-sitemap.xml
+
+# AI/LLM Discovery Section (Added by Kismet Plugin)
+# AI Plugin Discovery
+User-agent: ChatGPT-User
+Allow: /.well-known/ai-plugin.json
+Allow: /ask
+
+# LLM Policy
+User-agent: *
+Allow: /llms.txt
+
+# MCP Server Discovery  
+User-agent: *
+Allow: /.well-known/mcp/servers.json
+
+# Available AI Endpoints:
+# AI Plugin: {$site_url}/.well-known/ai-plugin.json
+# MCP Servers: {$site_url}/.well-known/mcp/servers.json
+# API Endpoint: {$site_url}/ask
+# LLMS Policy: {$site_url}/llms.txt";
+            echo $content;
+        }
+        exit;
+    }
+
+    /**
+     * Serve llms.txt content
+     */
+    private function serve_llms_content() {
+        header('Content-Type: text/plain');
+        
+        // Check if physical llms.txt exists first
+        $llms_file = ABSPATH . 'llms.txt';
+        if (file_exists($llms_file)) {
+            $content = file_get_contents($llms_file);
+            echo $content;
+        } else {
+            // Generate default llms.txt content
+            $site_url = get_site_url();
+            $content = "# LLM Usage Policy for " . get_bloginfo('name') . "
+
+# This site provides AI-accessible content and APIs
+# For AI/LLM training or interaction purposes
+
+## Available Endpoints:
+# Main API: {$site_url}/ask
+# AI Plugin: {$site_url}/.well-known/ai-plugin.json
+# MCP Servers: {$site_url}/.well-known/mcp/servers.json
+
+## Usage Guidelines:
+# - Respectful crawling please
+# - Rate limiting may apply
+# - Contact site owner for bulk access";
+            echo $content;
+        }
+        exit;
+    }
+
+    /**
+     * Serve AI Plugin manifest content
+     */
+    private function serve_ai_plugin_content() {
+        // Check if physical file exists first
+        $ai_plugin_file = ABSPATH . '.well-known/ai-plugin.json';
+        if (file_exists($ai_plugin_file)) {
+            header('Content-Type: application/json');
+            $content = file_get_contents($ai_plugin_file);
+            echo $content;
+        } else {
+            // Generate default AI plugin manifest
+            $site_url = get_site_url();
+            $manifest = array(
+                "schema_version" => "v1",
+                "name_for_human" => get_bloginfo('name'),
+                "name_for_model" => sanitize_title(get_bloginfo('name')),
+                "description_for_human" => get_bloginfo('description'),
+                "description_for_model" => "AI-accessible content and services",
+                "auth" => array("type" => "none"),
+                "api" => array(
+                    "type" => "openapi",
+                    "url" => $site_url . "/ask"
+                ),
+                "logo_url" => $site_url . "/wp-content/uploads/favicon.ico",
+                "contact_email" => get_option('admin_email'),
+                "legal_info_url" => $site_url . "/privacy-policy"
+            );
+            header('Content-Type: application/json');
+            echo json_encode($manifest, JSON_PRETTY_PRINT);
+        }
+        exit;
+    }
+
+    /**
+     * Serve MCP servers manifest content
+     */
+    private function serve_mcp_servers_content() {
+        // Check if physical file exists first
+        $mcp_file = ABSPATH . '.well-known/mcp/servers.json';
+        if (file_exists($mcp_file)) {
+            header('Content-Type: application/json');
+            $content = file_get_contents($mcp_file);
+            echo $content;
+        } else {
+            // Generate default MCP servers manifest
+            $site_url = get_site_url();
+            $manifest = array(
+                "mcpServers" => array(
+                    array(
+                        "name" => sanitize_title(get_bloginfo('name')),
+                        "description" => "AI-accessible content services",
+                        "endpoint" => $site_url . "/ask",
+                        "capabilities" => array("query", "search")
+                    )
+                )
+            );
+            header('Content-Type: application/json');
+            echo json_encode($manifest, JSON_PRETTY_PRINT);
+        }
+        exit;
     }
     
     /**
