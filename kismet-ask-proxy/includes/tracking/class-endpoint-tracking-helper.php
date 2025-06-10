@@ -49,7 +49,7 @@ class Kismet_Endpoint_Tracking_Helper {
             '/robots.txt' => Kismet_Event_Types::PLUGIN_ROBOTS_TXT_ACCESS,
             '/ask' => Kismet_Event_Types::PLUGIN_ASK_REQUEST,
             '/.well-known/ai-plugin.json' => Kismet_Event_Types::PLUGIN_AI_PLUGIN_MANIFEST_ACCESS,
-            '/.well-known/mcp/servers' => Kismet_Event_Types::PLUGIN_MCP_SERVERS_ACCESS,
+            '/.well-known/mcp/servers.json' => Kismet_Event_Types::PLUGIN_MCP_SERVERS_ACCESS,
         );
         
         if (isset($endpoint_mapping[$endpoint_path])) {

@@ -44,7 +44,7 @@ class Kismet_Universal_Tracker {
             '/robots.txt' => Kismet_Event_Types::PLUGIN_ROBOTS_TXT_ACCESS,
             '/ask' => Kismet_Event_Types::PLUGIN_ASK_REQUEST,
             '/.well-known/ai-plugin.json' => Kismet_Event_Types::PLUGIN_AI_PLUGIN_MANIFEST_ACCESS,
-            '/.well-known/mcp/servers' => Kismet_Event_Types::PLUGIN_MCP_SERVERS_ACCESS,
+            '/.well-known/mcp/servers.json' => Kismet_Event_Types::PLUGIN_MCP_SERVERS_ACCESS,
         );
         error_log("KISMET DEBUG: Route mapping configured with " . count($this->route_mapping) . " routes");
     }
@@ -93,7 +93,13 @@ class Kismet_Universal_Tracker {
             error_log("ROBOTS DEBUG [{$timestamp}]: Request intercepted - URI: {$request_uri}, User-Agent: {$user_agent}");
         }
         
-        // Check for .htaccess rewrite query parameter first
+        // ============================================================================
+        // HTACCESS REWRITE STRATEGY: Handle physical files forced through WordPress
+        // ============================================================================
+        // Physical files (robots.txt, ai-plugin.json) are normally served directly by Apache.
+        // Our .htaccess rules rewrite them to: /index.php?kismet_endpoint=robots
+        // This allows us to track access to physical files that would otherwise bypass WordPress.
+        
         $kismet_endpoint = $_GET['kismet_endpoint'] ?? null;
         
         if ($kismet_endpoint) {
@@ -105,37 +111,13 @@ class Kismet_Universal_Tracker {
             return; // IMPORTANT: Return early to prevent duplicate tracking
         }
         
-        // WORDPRESS MIDDLEWARE STRATEGY: This section processes direct path matches as middleware
-        // Intercepts requests and handles them before normal WordPress routing
-        // COMMENTED OUT: Testing htaccess rewrite strategy vs individual endpoints only
-        /*
-        // Parse path without query parameters for regular requests
-        $path = parse_url($request_uri, PHP_URL_PATH);
-        
-        // ROBOTS.TXT DEBUGGING: Track direct path matches
-        if ($path === '/robots.txt') {
-            error_log("ROBOTS DEBUG [{$timestamp}]: Direct path match for /robots.txt - URI: {$request_uri}");
-        }
-        
-        // ONLY process non-rewrite requests to prevent duplicates
-        // DEBUG: Log all requests to see what's being intercepted
-        error_log("KISMET DEBUG: Universal Tracker intercepted request - Path: {$path}, Full URI: {$request_uri}");
-        
-        foreach ($this->route_mapping as $tracked_path => $event_type) {
-            if ($this->path_matches($path, $tracked_path)) {
-                if ($tracked_path === '/robots.txt') {
-                    error_log("ROBOTS DEBUG [{$timestamp}]: Triggering tracking event for robots.txt");
-                }
-                error_log("KISMET DEBUG: Path matched! Tracked: {$tracked_path}, Event: {$event_type}");
-                Kismet_Event_Tracker::track_endpoint_access(
-                    $event_type,
-                    $tracked_path,
-                    array('full_request_uri' => $request_uri, 'source' => 'all_routes_wordpress_middleware_strategy')
-                );
-                break;
-            }
-        }
-        */
+        // ============================================================================
+        // WORDPRESS MIDDLEWARE STRATEGY: DISABLED to prevent duplicate tracking
+        // ============================================================================
+        // This middleware approach intercepted ALL requests and checked them against tracked paths.
+        // PROBLEM: Created duplicates when combined with htaccess rewrite strategy.
+        // SOLUTION: Disabled this strategy. Physical files use htaccess rewrite, virtual endpoints 
+        // use individual endpoint strategy. This gives us complete coverage without conflicts.
     }
     
     /**
@@ -157,7 +139,7 @@ class Kismet_Universal_Tracker {
             ),
             'mcp_servers' => array(
                 'event_type' => Kismet_Event_Types::PLUGIN_MCP_SERVERS_ACCESS,
-                'path' => '/.well-known/mcp/servers'
+                'path' => '/.well-known/mcp/servers.json'
             )
         );
         

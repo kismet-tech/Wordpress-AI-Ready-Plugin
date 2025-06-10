@@ -1,18 +1,22 @@
 # Kismet Ask Proxy WordPress Plugin
 
-This plugin creates an AI-ready WordPress site with three key features:
+This plugin creates an AI-ready WordPress site by adding these unique endpoints and files:
 
-1. **API Proxy**: Forwards `/ask` requests to Kismet backend
-2. **AI Discovery**: Serves `/.well-known/ai-plugin.json` for AI agents
-3. **robots.txt Integration**: Adds AI agent permissions to robots.txt
+1. **`/ask` Endpoint**: Virtual API endpoint that forwards requests to Kismet backend
+2. **`/.well-known/ai-plugin.json`**: AI plugin discovery manifest for ChatGPT and other AI agents
+3. **`/.well-known/mcp/servers.json`**: Model Context Protocol server discovery endpoint
+4. **`/llms.txt`**: AI policy file declaring LLM permissions and guidelines
+5. **Enhanced `/robots.txt`**: Adds AI agent permissions and endpoint access rules
+6. **Event Tracking**: Comprehensive analytics for all AI endpoint access
 
 ## What It Does
 
-- **Intercepts**: `yoursite.com/ask` requests and forwards to `api.makekismet.com/ask`
-- **Serves**: AI plugin discovery file at `yoursite.com/.well-known/ai-plugin.json`
-- **Modifies**: robots.txt to allow AI agents access to required endpoints
-- **Preserves**: Request method (GET/POST), headers, and body data
-- **Returns**: Responses from Kismet backend to original requester
+- **`/ask`**: Proxies requests to Kismet backend, preserving method (GET/POST), headers, and body data
+- **`/.well-known/ai-plugin.json`**: Serves AI plugin manifest for ChatGPT discovery and integration
+- **`/.well-known/mcp/servers.json`**: Provides Model Context Protocol server discovery endpoint
+- **`/llms.txt`**: Delivers AI policy file with LLM permissions and usage guidelines  
+- **`/robots.txt`**: Enhanced with AI agent access rules and endpoint permissions
+- **Event Analytics**: Tracks all AI endpoint access with comprehensive metrics and bot detection
 
 ## Installation Methods
 
@@ -194,50 +198,52 @@ If the JSON endpoint returns "Not Found":
 
 ## Testing URLs
 
-### 1. Test robots.txt
+## Event Tracking Architecture
 
-**URL:** `https://yoursite.com/robots.txt`
+This plugin implements a sophisticated event tracking system that monitors AI endpoint access for analytics. The architecture uses **two complementary strategies** to ensure comprehensive tracking without duplicates.
 
-**Expected result:**
+### Tracking Strategies
 
-```
-User-agent: *
-Disallow: /wp-admin/
-Allow: /wp-admin/admin-ajax.php
+#### 1. **Htaccess Rewrite Strategy** (`all_routes_htaccess_rewrite_strategy`)
 
-# Kismet AI integration
-User-agent: *
-Allow: /ask
-Allow: /.well-known/ai-plugin.json
-```
+**Purpose**: Forces physical files through WordPress for tracking  
+**Why needed**: By default, WordPress .htaccess rules serve physical files (robots.txt, ai-plugin.json) directly via Apache, bypassing WordPress entirely and preventing tracking.
 
-### 2. Test AI Plugin JSON
-
-**URL:** `https://yoursite.com/.well-known/ai-plugin.json`
-
-**Expected result:**
-
-```json
-{
-  "schema_version": "v1",
-  "name_for_human": "Your Site AI Assistant",
-  "name_for_model": "your_site_assistant",
-  "description_for_human": "Get information about Your Site...",
-  "description_for_model": "Provides hotel information...",
-  "auth": {
-    "type": "none"
-  },
-  "api": {
-    "type": "openapi",
-    "url": "https://yoursite.com/ask"
-  },
-  "logo_url": "https://yoursite.com/wp-content/uploads/2024/kismet-logo.png",
-  "contact_email": "admin@yoursite.com",
-  "legal_info_url": "https://yoursite.com/privacy-policy"
-}
+**How it works**:
+```apache
+# These rules force physical files through WordPress
+RewriteRule ^robots\.txt$ /index.php?kismet_endpoint=robots [L,QSA]
+RewriteRule ^\.well-known/ai-plugin\.json$ /index.php?kismet_endpoint=ai_plugin [L,QSA]
 ```
 
-## Features
+**Files tracked**: robots.txt, llms.txt, .well-known/ai-plugin.json, .well-known/mcp/servers.json
+
+#### 2. **Individual Endpoint Strategy** (`single_route_[name]_individual_endpoint_strategy`)
+
+**Purpose**: Handles virtual endpoints that naturally route through WordPress  
+**Why needed**: Virtual endpoints like `/ask` don't exist as physical files, so they naturally go through WordPress routing.
+
+**How it works**: Each endpoint handler (Ask, LLMS, etc.) manages its own tracking when WordPress routes the request to it.
+
+**Endpoints tracked**: `/ask` and other virtual endpoints
+
+### Architecture Benefits
+
+- ✅ **No Duplicates**: WordPress middleware strategy disabled to prevent conflicts
+- ✅ **Complete Coverage**: Both physical files and virtual endpoints are tracked  
+- ✅ **Clean Identification**: Database events clearly show which strategy handled each request
+- ✅ **Optimal Performance**: Each endpoint uses the most efficient tracking method
+
+### Event Sources in Database
+
+When viewing tracking events, you'll see these source identifiers:
+
+- `all_routes_htaccess_rewrite_strategy` - Physical files forced through htaccess rewrite
+- `single_route_ask_individual_endpoint_strategy` - Virtual /ask endpoint  
+- `single_route_llms_individual_endpoint_strategy` - Virtual LLMS endpoint
+- `single_route_ai_plugin_individual_endpoint_strategy` - Virtual AI plugin endpoint
+
+### Features
 
 - ✅ Modular architecture with separated concerns
 - ✅ robots.txt integration (non-destructive)

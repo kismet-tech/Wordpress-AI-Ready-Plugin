@@ -41,7 +41,12 @@ class Kismet_Ask_Handler {
         // Check if this is an /ask request
         if (strpos($request_uri, '/ask') === 0) {
             
-            // Track this request using the reusable helper
+            // ============================================================================
+            // INDIVIDUAL ENDPOINT STRATEGY: Track virtual endpoint access
+            // ============================================================================
+            // Virtual endpoints like /ask don't exist as physical files, so they naturally
+            // route through WordPress. Each endpoint handles its own tracking when called.
+            // This complements the htaccess rewrite strategy (for physical files).
             Kismet_Endpoint_Tracking_Helper::track_standard_endpoint('/ask', array('source' => 'single_route_ask_individual_endpoint_strategy'));
             
             // Determine if this is an API request or human visitor

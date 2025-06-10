@@ -110,16 +110,29 @@ class Kismet_Htaccess_Manager {
     
     /**
      * Generate the tracking rewrite rules
+     * 
+     * HTACCESS REWRITE STRATEGY: Forces physical files through WordPress for tracking
+     * 
+     * PROBLEM: WordPress default .htaccess serves physical files directly via Apache,
+     * bypassing WordPress entirely and preventing analytics tracking.
+     * 
+     * SOLUTION: These rules intercept requests for specific physical files and rewrite
+     * them to WordPress with special query parameters (kismet_endpoint=robots).
+     * The Universal Tracker catches these and tracks access before serving content.
+     * 
+     * NOTE: Virtual endpoints like /ask don't need this - they naturally route through
+     * WordPress and use the Individual Endpoint Strategy for tracking.
      */
     private static function generate_tracking_rules() {
         $rules = self::MARKER_BEGIN . "\n";
         $rules .= "<IfModule mod_rewrite.c>\n";
         $rules .= "RewriteEngine On\n";
-        $rules .= "# Force tracked endpoints through WordPress even if physical files exist\n";
+        $rules .= "# HTACCESS REWRITE STRATEGY: Force physical files through WordPress for tracking\n";
+        $rules .= "# These files would normally be served directly by Apache, bypassing WordPress\n";
         $rules .= "RewriteRule ^robots\\.txt$ /index.php?kismet_endpoint=robots [L,QSA]\n";
         $rules .= "RewriteRule ^llms\\.txt$ /index.php?kismet_endpoint=llms [L,QSA]\n";
         $rules .= "RewriteRule ^\\.well-known/ai-plugin\\.json$ /index.php?kismet_endpoint=ai_plugin [L,QSA]\n";
-        $rules .= "RewriteRule ^\\.well-known/mcp/servers$ /index.php?kismet_endpoint=mcp_servers [L,QSA]\n";
+        $rules .= "RewriteRule ^\\.well-known/mcp/servers\\.json$ /index.php?kismet_endpoint=mcp_servers [L,QSA]\n";
         $rules .= "</IfModule>\n";
         $rules .= self::MARKER_END;
         

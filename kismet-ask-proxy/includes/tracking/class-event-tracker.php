@@ -11,7 +11,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Load dependencies
-require_once(plugin_dir_path(__FILE__) . '../shared/class-event-types.php');
+require_once(plugin_dir_path(__FILE__) . 'class-event-types.php');
 require_once(plugin_dir_path(__FILE__) . 'class-bot-detector.php');
 require_once(plugin_dir_path(__FILE__) . 'class-bot-classifier.php');
 require_once(plugin_dir_path(__FILE__) . 'class-metric-builder.php');

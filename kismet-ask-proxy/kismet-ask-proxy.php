@@ -57,14 +57,14 @@ require_once KISMET_PLUGIN_PATH . 'includes/environment/class-report-generator.p
 require_once KISMET_PLUGIN_PATH . 'includes/environment/class-environment-detector-v2.php';
 
 // Include tracking system
-require_once KISMET_PLUGIN_PATH . 'includes/shared/class-event-types.php';
+require_once KISMET_PLUGIN_PATH . 'includes/tracking/class-event-types.php';
 require_once KISMET_PLUGIN_PATH . 'includes/tracking/class-bot-detector.php';
 require_once KISMET_PLUGIN_PATH . 'includes/tracking/class-bot-classifier.php';
 require_once KISMET_PLUGIN_PATH . 'includes/tracking/class-metric-builder.php';
 require_once KISMET_PLUGIN_PATH . 'includes/tracking/class-event-tracker.php';
 require_once KISMET_PLUGIN_PATH . 'includes/tracking/class-endpoint-tracking-helper.php';
 require_once KISMET_PLUGIN_PATH . 'includes/tracking/class-htaccess-manager.php';
-require_once KISMET_PLUGIN_PATH . 'includes/shared/class-universal-tracker.php';
+require_once KISMET_PLUGIN_PATH . 'includes/tracking/class-universal-tracker.php';
 
 // Include admin interface
 require_once KISMET_PLUGIN_PATH . 'includes/admin/class-tracking-settings.php';
