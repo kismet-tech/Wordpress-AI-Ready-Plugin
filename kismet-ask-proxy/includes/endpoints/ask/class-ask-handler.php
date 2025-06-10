@@ -42,7 +42,7 @@ class Kismet_Ask_Handler {
         if (strpos($request_uri, '/ask') === 0) {
             
             // Track this request using the reusable helper
-            Kismet_Endpoint_Tracking_Helper::track_standard_endpoint('/ask');
+            Kismet_Endpoint_Tracking_Helper::track_standard_endpoint('/ask', array('source' => 'single_route_ask_individual_endpoint_strategy'));
             
             // Determine if this is an API request or human visitor
             $accept_header = $_SERVER['HTTP_ACCEPT'] ?? '';

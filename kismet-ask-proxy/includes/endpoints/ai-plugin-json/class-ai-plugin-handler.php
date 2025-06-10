@@ -250,7 +250,7 @@ class Kismet_AI_Plugin_Handler {
         
         if ($query_var) {
             // Track this request using the reusable helper
-            Kismet_Endpoint_Tracking_Helper::track_standard_endpoint('/.well-known/ai-plugin.json');
+            Kismet_Endpoint_Tracking_Helper::track_standard_endpoint('/.well-known/ai-plugin.json', array('source' => 'single_route_ai_plugin_individual_endpoint_strategy'));
             
             $this->serve_ai_plugin_content();
             exit;

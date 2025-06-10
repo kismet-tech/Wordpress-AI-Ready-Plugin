@@ -62,7 +62,7 @@ class Kismet_Universal_Tracker {
         // Hook into request parsing to catch all requests that reach WordPress
         add_action('parse_request', array($this, 'intercept_request'), 1);
         self::$hooks_registered = true;
-        error_log("KISMET DEBUG: Registered parse_request hook for Universal Tracker");
+        error_log("KISMET DEBUG: Universal Tracker parse_request hook ENABLED for testing");
     }
     
     /**
@@ -105,6 +105,10 @@ class Kismet_Universal_Tracker {
             return; // IMPORTANT: Return early to prevent duplicate tracking
         }
         
+        // WORDPRESS MIDDLEWARE STRATEGY: This section processes direct path matches as middleware
+        // Intercepts requests and handles them before normal WordPress routing
+        // COMMENTED OUT: Testing htaccess rewrite strategy vs individual endpoints only
+        /*
         // Parse path without query parameters for regular requests
         $path = parse_url($request_uri, PHP_URL_PATH);
         
@@ -126,11 +130,12 @@ class Kismet_Universal_Tracker {
                 Kismet_Event_Tracker::track_endpoint_access(
                     $event_type,
                     $tracked_path,
-                    array('full_request_uri' => $request_uri, 'source' => 'direct_wordpress_request')
+                    array('full_request_uri' => $request_uri, 'source' => 'all_routes_wordpress_middleware_strategy')
                 );
                 break;
             }
         }
+        */
     }
     
     /**
@@ -166,7 +171,7 @@ class Kismet_Universal_Tracker {
                 $mapping['path'],
                 array(
                     'full_request_uri' => $request_uri,
-                    'source' => 'htaccess_rewrite'
+                    'source' => 'all_routes_htaccess_rewrite_strategy'
                 )
             );
             
