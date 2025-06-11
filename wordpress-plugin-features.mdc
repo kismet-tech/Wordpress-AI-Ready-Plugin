@@ -1,0 +1,160 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Kismet AI Ready Plugin - Core Features
+
+## Overview
+WordPress plugin that makes hotel websites AI-discoverable and provides intelligent assistance endpoints.
+
+## Core Features
+
+### 1. AI Plugin Discovery
+- **Endpoint**: `/.well-known/ai-plugin.json`
+- **Purpose**: Allows AI tools (ChatGPT, Claude, etc.) to discover and use the hotel assistant
+- **Method**: Static file generation for zero database operations
+- **Configurable**: Hotel name, description, logo, contact info via admin panel
+
+### 2. MCP Server Discovery  
+- **Endpoint**: `/.well-known/mcp/servers.json`
+- **Purpose**: Model Context Protocol server discovery for AI integrations
+- **Method**: Static file generation listing available AI services
+- **Content**: Hotel assistant server information and capabilities
+
+### 3. AI/LLM Policy
+- **Endpoint**: `/llms.txt` 
+- **Purpose**: Declares AI/LLM usage policy and available endpoints
+- **Method**: Static file with policy information and endpoint listings
+- **Content**: Usage guidelines, contact info, available AI endpoints
+
+### 4. Robots.txt Enhancement
+- **Endpoint**: `/robots.txt`
+- **Purpose**: Adds AI-specific directives to existing robots.txt
+- **Method**: Appends AI discovery directives to existing robots.txt
+- **Content**: AI crawler permissions and endpoint listings
+
+### 5. Ask Endpoint
+- **Endpoint**: `/ask`
+- **Purpose**: Dual-purpose endpoint for both API requests and human visitors
+- **API Mode**: Proxies requests to Kismet backend at `api.makekismet.com/ask` - NO mock responses or fake data
+- **Backend Integration**: Makes HTTP POST requests to `https://api.makekismet.com/ask`
+- **Request Format**: 
+  ```json
+  {
+    "query": "User's question here",
+    "session_id": "optional-session-identifier", 
+    "source": "wordpress_plugin",
+    "site_url": "https://hotel-website.com",
+    "timestamp": "2024-01-15T10:30:00Z"
+  }
+  ```
+- **Response Format**: Server-Sent Events (SSE) stream with multiple message types:
+  - `asking_sites`: Initial status message
+  - `result_batch`: Search results from hotel knowledge base
+  - `complete`: Indicates end of stream
+- **Human Mode**: Shows branded chat interface for website visitors
+- **Database**: Logs conversations for analytics (when backend is configured)
+- **Status**: Backend endpoint configured - requires SSE stream handling
+
+### 6. Admin Interface
+- **Location**: WordPress admin → Settings → Kismet AI Plugin  
+- **Purpose**: Configure AI plugin settings and view diagnostics
+- **Features**: 
+  - Edit AI plugin JSON content
+  - Regenerate static files
+  - View environment compatibility report
+  - Monitor endpoint status
+
+### 7. Environment Detection
+- **Purpose**: Checks WordPress environment compatibility
+- **Features**:
+  - Web server configuration analysis
+  - File permission verification  
+  - Plugin conflict detection
+  - Performance optimization recommendations
+
+## Architecture Principles
+
+### Clean Separation
+- **Installers**: Run ONCE during activation/deactivation - handle ALL setup operations including static file generation, database operations, and rewrite rules
+- **Handlers**: Only needed for dynamic endpoints requiring runtime processing - currently ONLY `/ask` endpoint
+- **Static Files**: AI discovery endpoints (`.well-known/ai-plugin.json`, `.well-known/mcp/servers.json`, `llms.txt`) are served directly by web server with zero PHP execution
+- **Admin**: Configuration interface only - triggers static file regeneration when settings change
+
+### Critical Performance Design
+- **Static File Strategy**: All AI discovery endpoints are static files generated once during activation or settings changes
+- **NO Runtime Handlers**: AI discovery endpoints (`.well-known/*`, `llms.txt`, `robots.txt`) do NOT need handlers - they are physical files served by web server
+- **Single Dynamic Handler**: Only `/ask` endpoint needs runtime processing for API proxying and conversation logging
+- **Zero Database Overhead**: AI crawlers hit static files directly, never triggering WordPress or database operations
+- **One-Time Operations**: ALL database operations, file generation, and configuration happens during plugin activation/deactivation ONLY
+
+### File Structure
+```
+includes/
+  installers/     # One-time setup classes - each handles both activation AND deactivation
+    class-ai-plugin-installer.php      # Generates .well-known/ai-plugin.json static file
+    class-mcp-servers-installer.php    # Generates .well-known/mcp/servers.json static file  
+    class-llms-installer.php           # Generates llms.txt static file
+    class-robots-installer.php         # Enhances robots.txt file
+    class-ask-installer.php            # Sets up /ask rewrite rules & database tables
+  handlers/       # Runtime request processing (minimal - only /ask endpoint)
+    class-ask-handler.php             # ONLY handler needed - processes /ask requests
+  admin/          # Configuration interface
+  environment/    # Compatibility detection
+  shared/         # Common utilities
+```
+
+### Installer vs Handler Decision Matrix
+| Endpoint | Type | Implementation | Runtime Processing |
+|----------|------|----------------|-------------------|
+| `/.well-known/ai-plugin.json` | Static File | Installer generates once | None - web server serves directly |
+| `/.well-known/mcp/servers.json` | Static File | Installer generates once | None - web server serves directly |
+| `/llms.txt` | Static File | Installer generates once | None - web server serves directly |
+| `/robots.txt` | Enhanced File | Installer modifies once | None - web server serves directly |
+| `/ask` | Dynamic Endpoint | Handler processes runtime | Full - API proxying, logging, responses |
+
+## Request Flow
+
+### AI Discovery Requests
+1. AI crawler requests `/.well-known/ai-plugin.json`
+2. Web server serves static file directly
+3. Zero PHP execution, zero database operations
+
+### Ask API Requests  
+1. POST/GET to `/ask` endpoint
+2. Handler validates and formats request
+3. Proxies to Kismet backend API
+4. Logs conversation to database
+5. Returns response to client
+
+### Human Visitors
+1. GET to `/ask` endpoint (browser request)
+2. Handler detects human visitor
+3. Serves branded chat interface
+4. Interface connects to `/ask` API endpoint
+
+## Configuration
+
+### Required Settings
+- None (works with auto-detected defaults)
+
+### Optional Customization
+- Hotel name and description
+- Logo URL
+- Contact email  
+- Legal info URL
+- Custom AI plugin content
+
+## Activation Process
+1. Create `.well-known` directory structure
+2. Generate all static files with current settings
+3. Set up database tables for conversation logging
+4. Add rewrite rules for `/ask` endpoint
+5. Enhance robots.txt with AI directives
+
+## Deactivation Process
+1. Remove static files
+2. Clean up robots.txt enhancements  
+3. Remove rewrite rules
+4. Preserve database tables and settings

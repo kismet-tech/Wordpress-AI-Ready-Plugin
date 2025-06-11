@@ -111,7 +111,7 @@ function add_action($hook, $function, $priority = 10, $accepted_args = 1) {
 
 try {
     // Import the actual plugin function
-    require_once 'kismet-ask-proxy/kismet-ask-proxy.php';
+    require_once 'kismet-ai-ready-plugin/kismet-ai-ready-plugin.php';
     
     if (function_exists('show_branded_page')) {
         // Call the branded page function directly
