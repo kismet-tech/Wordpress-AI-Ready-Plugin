@@ -57,28 +57,66 @@ class Kismet_Endpoint_Manager {
         
         error_log("KISMET ENDPOINT: Registering endpoint: " . $path);
         
-        // Test which approach works in this environment
-        $test_results = $this->route_tester->determine_serving_method($path, $test_content);
-        $approach = $test_results['recommended_approach'] ?? 'wordpress_rewrite';
-        
-        error_log("KISMET ENDPOINT: Route tester recommends: " . $approach . " for " . $path);
-        
-        if ($approach === 'physical_file') {
-            $this->create_static_file($path, $test_content);
-        } else {
-            $this->register_rewrite_endpoint($path, $config);
+        // Wrap route testing in try-catch block
+        try {
+            // Test which approach works in this environment
+            $test_results = $this->route_tester->determine_serving_method($path, $test_content);
+            
+            // **SIMPLIFIED: Use simple strategy selection**
+            $approach_result = $this->determine_best_approach($path, $test_results);
+            $approach = $approach_result['strategy'];
+            $strategy_index = $approach_result['index'];
+            
+            if (!$approach) {
+                throw new Exception("No working strategy found for endpoint: $path");
+            }
+            
+            error_log("KISMET ENDPOINT: Using strategy: " . $approach . " (index $strategy_index) for " . $path);
+            
+            if ($approach === 'physical_file') {
+                $this->create_static_file($path, $test_content);
+            } else {
+                $this->register_rewrite_endpoint($path, $config);
+            }
+            
+            // Store endpoint config for runtime handling
+            $this->endpoints[$path] = $config;
+            
+            // Ensure the recommended_approach is preserved in the returned results
+            $test_results['recommended_approach'] = $approach;
+            
+            // **SIMPLIFIED: Persist simple strategy information for dashboard access**
+            $this->save_endpoint_strategy($path, array(
+                'current_strategy' => $approach,
+                'current_strategy_index' => $strategy_index,
+                'timestamp' => current_time('mysql'),
+                'both_strategies_work' => $test_results['wordpress_rewrite_test']['success'] && $test_results['physical_file_test']['success']
+            ));
+            
+            error_log("KISMET ENDPOINT: Returning test results with approach: " . ($test_results['recommended_approach'] ?? 'NULL'));
+            
+            return $test_results;
+            
+        } catch (Exception $e) {
+            error_log("KISMET ENDPOINT ERROR: Failed to register endpoint $path: " . $e->getMessage());
+            
+            // **SIMPLIFIED: Store error information for dashboard**
+            $this->save_endpoint_strategy($path, array(
+                'current_strategy' => 'failed',
+                'current_strategy_index' => 0,
+                'error' => $e->getMessage(),
+                'timestamp' => current_time('mysql')
+            ));
+            
+            // Return error results
+            return array(
+                'path' => $path,
+                'overall_success' => false,
+                'can_proceed' => false,
+                'recommended_approach' => null,
+                'error' => $e->getMessage()
+            );
         }
-        
-        // Store endpoint config for runtime handling
-        $this->endpoints[$path] = $config;
-        
-        // Ensure the recommended_approach is preserved in the returned results
-        // This fixes a bug where the approach value was getting lost
-        $test_results['recommended_approach'] = $approach;
-        
-        error_log("KISMET ENDPOINT: Returning test results with approach: " . ($test_results['recommended_approach'] ?? 'NULL'));
-        
-        return $test_results;
     }
     
     /**
@@ -200,5 +238,169 @@ class Kismet_Endpoint_Manager {
      */
     public function get_registered_endpoints() {
         return $this->endpoints;
+    }
+    
+    /**
+     * **SIMPLIFIED: Save endpoint strategy information for dashboard access**
+     */
+    private function save_endpoint_strategy($path, $strategy_data) {
+        $endpoint_key = $this->path_to_option_key($path);
+        $option_name = 'kismet_endpoint_strategy_' . $endpoint_key;
+        
+        error_log("KISMET ENDPOINT: Saving strategy for $path as option $option_name");
+        return update_option($option_name, $strategy_data);
+    }
+    
+    /**
+     * **SIMPLIFIED: Get strategy information for a specific endpoint**
+     */
+    public function get_endpoint_strategy($path) {
+        $endpoint_key = $this->path_to_option_key($path);
+        $option_name = 'kismet_endpoint_strategy_' . $endpoint_key;
+        
+        return get_option($option_name, array(
+            'current_strategy' => 'unknown',
+            'current_strategy_index' => 0,
+            'timestamp' => null
+        ));
+    }
+    
+    /**
+     * **SIMPLIFIED: Get all endpoint strategies for dashboard display**
+     */
+    public function get_all_endpoint_strategies() {
+        $strategies = array();
+        $common_endpoints = array(
+            '/.well-known/ai-plugin.json',
+            '/.well-known/mcp/servers.json',
+            '/llms.txt',
+            '/ask',
+            '/robots.txt'
+        );
+        
+        foreach ($common_endpoints as $path) {
+            $strategies[$path] = $this->get_endpoint_strategy($path);
+        }
+        
+        return $strategies;
+    }
+    
+    /**
+     * **SIMPLIFIED: Get available strategies array**
+     */
+    private function get_available_strategies() {
+        return array('physical_file', 'wordpress_rewrite');
+    }
+    
+    /**
+     * **SIMPLIFIED: Get next strategy to try**
+     */
+    private function get_next_strategy_index($current_index) {
+        $strategies = $this->get_available_strategies();
+        return ($current_index + 1) % count($strategies);
+    }
+    
+    /**
+     * **SIMPLIFIED: Determine best approach and save simple strategy data**
+     */
+    private function determine_best_approach($path, $test_results) {
+        $strategies = $this->get_available_strategies();
+        $wp_success = $test_results['wordpress_rewrite_test']['success'] ?? false;
+        $file_success = $test_results['physical_file_test']['success'] ?? false;
+        
+        // Try strategies in order: physical_file (index 0), then wordpress_rewrite (index 1)
+        if ($file_success) {
+            error_log("KISMET ENDPOINT: Choosing physical_file (index 0)");
+            return array('strategy' => 'physical_file', 'index' => 0);
+        }
+        
+        if ($wp_success) {
+            error_log("KISMET ENDPOINT: Choosing wordpress_rewrite (index 1)");
+            return array('strategy' => 'wordpress_rewrite', 'index' => 1);
+        }
+        
+        error_log("KISMET ENDPOINT: No working strategy found");
+        return array('strategy' => null, 'index' => 0);
+    }
+    
+    /**
+     * **NEW: Determine what the fallback strategy should be**
+     */
+    private function determine_fallback_strategy($test_results) {
+        $wp_success = $test_results['wordpress_rewrite_test']['success'] ?? false;
+        $file_success = $test_results['physical_file_test']['success'] ?? false;
+        $current_approach = $test_results['recommended_approach'] ?? null;
+        
+        // If both work, the fallback is the one not currently used
+        if ($wp_success && $file_success) {
+            return ($current_approach === 'wordpress_rewrite') ? 'physical_file' : 'wordpress_rewrite';
+        }
+        
+        // If only one works, no fallback available
+        if ($wp_success && !$file_success) {
+            return 'none_available';
+        }
+        
+        if ($file_success && !$wp_success) {
+            return 'none_available';
+        }
+        
+        // If neither works
+        return 'manual_intervention_required';
+    }
+    
+    /**
+     * **NEW: Convert URL path to safe option key**
+     */
+    private function path_to_option_key($path) {
+        // Convert path to safe option key by removing slashes and dots
+        $key = str_replace(array('/', '.', '-'), '_', $path);
+        $key = trim($key, '_');
+        return $key;
+    }
+    
+    /**
+     * **NEW: Clean up strategy data during deactivation**
+     */
+    public function cleanup_strategy_data() {
+        $common_endpoints = array(
+            '/.well-known/ai-plugin.json',
+            '/.well-known/mcp/servers.json',
+            '/llms.txt',
+            '/ask',
+            '/robots.txt'
+        );
+        
+        foreach ($common_endpoints as $path) {
+            $endpoint_key = $this->path_to_option_key($path);
+            $option_name = 'kismet_endpoint_strategy_' . $endpoint_key;
+            delete_option($option_name);
+        }
+        
+        error_log("KISMET ENDPOINT: Cleaned up strategy data for all endpoints");
+    }
+    
+    /**
+     * **NEW: Get ordered strategy preferences for each endpoint type**
+     */
+    private function get_endpoint_strategy_preferences() {
+        return array(
+            '/.well-known/ai-plugin.json' => array('physical_file', 'wordpress_rewrite'),
+            '/.well-known/mcp/servers.json' => array('physical_file', 'wordpress_rewrite'),
+            '/robots.txt' => array('physical_file', 'wordpress_rewrite'),
+            '/llms.txt' => array('physical_file', 'wordpress_rewrite'),
+            '/ask' => array('wordpress_rewrite', 'physical_file'),
+            // Add more endpoint-specific preferences as needed
+        );
+    }
+    
+    /**
+     * **NEW: Get preferred strategy order for a specific path**
+     */
+    private function get_preferred_strategies($path) {
+        $preferences = $this->get_endpoint_strategy_preferences();
+        
+        // Return specific preferences if defined, otherwise use defaults
+        return $preferences[$path] ?? array('wordpress_rewrite', 'physical_file');
     }
 } 

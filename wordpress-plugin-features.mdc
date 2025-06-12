@@ -13,19 +13,19 @@ WordPress plugin that makes hotel websites AI-discoverable and provides intellig
 ### 1. AI Plugin Discovery
 - **Endpoint**: `/.well-known/ai-plugin.json`
 - **Purpose**: Allows AI tools (ChatGPT, Claude, etc.) to discover and use the hotel assistant
-- **Method**: Static file generation for zero database operations
+- **Method**: Static file preferred, WordPress rewrite fallback (no universal approach works)
 - **Configurable**: Hotel name, description, logo, contact info via admin panel
 
 ### 2. MCP Server Discovery  
 - **Endpoint**: `/.well-known/mcp/servers.json`
 - **Purpose**: Model Context Protocol server discovery for AI integrations
-- **Method**: Static file generation listing available AI services
+- **Method**: Static file preferred, WordPress rewrite fallback (no universal approach works)
 - **Content**: Hotel assistant server information and capabilities
 
 ### 3. AI/LLM Policy
 - **Endpoint**: `/llms.txt` 
 - **Purpose**: Declares AI/LLM usage policy and available endpoints
-- **Method**: Static file with policy information and endpoint listings
+- **Method**: Static file preferred, WordPress rewrite fallback (no universal approach works)
 - **Content**: Usage guidelines, contact info, available AI endpoints
 
 ### 4. Robots.txt Enhancement
@@ -147,11 +147,13 @@ includes/
 - Custom AI plugin content
 
 ## Activation Process
-1. Create `.well-known` directory structure
-2. Generate all static files with current settings
-3. Set up database tables for conversation logging
-4. Add rewrite rules for `/ask` endpoint
-5. Enhance robots.txt with AI directives
+1. Try most common approach first (static files) for each endpoint during activation
+2. **Post-activation validation**: Immediately test endpoint accessibility with HTTP requests (can't validate during activation)
+3. Show user instant feedback on activation screen about what worked/failed for each endpoint
+4. If endpoints fail validation, provide one-click fallback options (WordPress rewrites, manual config)
+5. Use validation results to give specific server configuration recommendations
+6. Admin page shows real-time endpoint status so user can correct issues immediately
+7. Intercept all endpoint requests and send analytics to api.makekismet.com
 
 ## Deactivation Process
 1. Remove static files

@@ -220,6 +220,35 @@ class Kismet_Endpoint_Status_Notice {
                     });
                 });
                 
+                // **NEW: Handle fallback button clicks in notice**
+                $(document).on("click", ".try-fallback-btn", function(e) {
+                    e.preventDefault();
+                    var button = $(this);
+                    var endpoint = button.data("endpoint");
+                    var strategy = button.data("strategy");
+                    
+                    if (confirm("This will attempt to switch to " + strategy.replace("_", " ") + " strategy. Continue?")) {
+                        button.prop("disabled", true).text("Switching...");
+                        
+                        // You could add AJAX call here to actually switch strategies
+                        // For now, just show a message and re-test
+                        alert("Strategy switching will be implemented. Re-testing endpoint...");
+                        
+                        // Re-test the specific endpoint
+                        $.post(ajaxurl, {
+                            action: "kismet_notice_test_endpoint",
+                            endpoint: endpoint,
+                            nonce: "' . wp_create_nonce('kismet_notice_test_endpoint') . '"
+                        }, function(response) {
+                            if (response.success) {
+                                $("#kismet-notice-status-" + endpoint + " .endpoint-status").html(response.data.summary);
+                                $("#kismet-notice-detail-" + endpoint).html(response.data.detail);
+                            }
+                            button.prop("disabled", false).text("Try Fallback");
+                        });
+                    }
+                });
+                
                 // Auto-test on load (after a short delay)
                 setTimeout(function() {
                     $("#kismet-notice-test-all").click();
@@ -319,6 +348,23 @@ class Kismet_Endpoint_Status_Notice {
                 color: #dba617;
                 font-weight: 600;
             }
+            /* **NEW: Strategy information styles for notice** */
+            .notice-strategy-info {
+                margin-top: 6px;
+                padding: 4px 6px;
+                background: #f0f0f1;
+                border-radius: 2px;
+                font-size: 10px;
+                line-height: 1.3;
+            }
+            .notice-strategy-fallback {
+                color: #0073aa;
+                font-weight: 500;
+            }
+            .notice-strategy-warning {
+                color: #dba617;
+                font-weight: 600;
+            }
         ';
     }
     
@@ -394,10 +440,63 @@ class Kismet_Endpoint_Status_Notice {
      */
     private function format_status_summary($status) {
         if ($status['is_working']) {
-            return '<span class="endpoint-working">✅ Working</span>';
+            $summary = '<span class="endpoint-working">✅ Working</span>';
+            // Show what method is working
+            if (isset($status['current_strategy']) && $status['current_strategy'] !== 'unknown') {
+                $strategy_name = $this->format_strategy_name($status['current_strategy']);
+                $summary .= '<br><small style="color: #00a32a;">via ' . esc_html($strategy_name) . '</small>';
+            }
         } else {
-            return '<span class="endpoint-failed">❌ Failed</span>';
+            $summary = '<span class="endpoint-failed">❌ Failed</span>';
+            // Show what method failed and next strategy to try
+            if (isset($status['current_strategy']) && $status['current_strategy'] !== 'unknown') {
+                $strategy_name = $this->format_strategy_name($status['current_strategy']);
+                $summary .= '<br><small style="color: #d63638;">' . esc_html($strategy_name) . ' not working</small>';
+                
+                // **SIMPLIFIED: Show next strategy button based on simple array index**
+                if (isset($status['current_strategy_index'])) {
+                    $next_strategy = $this->get_next_strategy($status['current_strategy_index']);
+                    if ($next_strategy) {
+                        $next_strategy_name = $this->format_strategy_name($next_strategy);
+                        $endpoint_key = $this->get_endpoint_key_from_status($status);
+                        $summary .= '<br><button type="button" class="button button-small try-fallback-btn" data-endpoint="' . esc_attr($endpoint_key) . '" data-strategy="' . esc_attr($next_strategy) . '" style="margin-top: 4px; font-size: 10px; padding: 2px 6px;">Try ' . esc_html($next_strategy_name) . '</button>';
+                    }
+                }
+            }
         }
+        
+        return $summary;
+    }
+    
+    /**
+     * **SIMPLIFIED: Get the next strategy to try based on simple array index**
+     */
+    private function get_next_strategy($current_index) {
+        $strategies = array('physical_file', 'wordpress_rewrite');
+        $next_index = ($current_index + 1) % count($strategies);
+        return $strategies[$next_index];
+    }
+    
+    /**
+     * **NEW: Extract endpoint key from status data for button actions**
+     */
+    private function get_endpoint_key_from_status($status) {
+        // Map URL patterns to endpoint keys used in the dashboard
+        $url_to_key_map = array(
+            '/.well-known/ai-plugin.json' => 'ai_plugin',
+            '/.well-known/mcp/servers.json' => 'mcp_servers',
+            '/llms.txt' => 'llms_txt',
+            '/ask' => 'ask_endpoint',
+            '/robots.txt' => 'robots_txt'
+        );
+        
+        foreach ($url_to_key_map as $url_pattern => $key) {
+            if (isset($status['url']) && strpos($status['url'], $url_pattern) !== false) {
+                return $key;
+            }
+        }
+        
+        return 'unknown';
     }
     
     /**
@@ -408,8 +507,46 @@ class Kismet_Endpoint_Status_Notice {
         $html = '<div class="' . $css_class . '">';
         $html .= esc_html($status['status']) . '<br>';
         $html .= '<small>' . esc_html($status['result']) . '</small>';
+        
+        // **NEW: Add strategy information to detailed view**
+        if (isset($status['current_strategy']) && $status['current_strategy'] !== 'unknown') {
+            $html .= '<br><div class="notice-strategy-info">';
+            $html .= '<strong>Method:</strong> ' . esc_html($this->format_strategy_name($status['current_strategy']));
+            
+            // Show fallback if available
+            if (isset($status['fallback_strategy']) && $status['fallback_strategy'] !== 'unknown' && $status['fallback_strategy'] !== 'none_available') {
+                if ($status['fallback_strategy'] === 'manual_intervention_required') {
+                    $html .= '<br><span class="notice-strategy-warning">⚠️ No fallback</span>';
+                } else {
+                    $html .= '<br><span class="notice-strategy-fallback">Fallback: ' . esc_html($this->format_strategy_name($status['fallback_strategy'])) . '</span>';
+                }
+            }
+            
+            $html .= '</div>';
+        }
+        
         $html .= '</div>';
         return $html;
+    }
+    
+    /**
+     * **NEW: Format strategy names for display**
+     */
+    private function format_strategy_name($strategy) {
+        switch ($strategy) {
+            case 'wordpress_rewrite':
+                return 'WP Rewrite';
+            case 'physical_file':
+                return 'Static File';
+            case 'failed':
+                return 'Failed';
+            case 'none_available':
+                return 'No Fallback';
+            case 'manual_intervention_required':
+                return 'Manual Fix';
+            default:
+                return ucfirst(str_replace('_', ' ', $strategy));
+        }
     }
     
     /**
