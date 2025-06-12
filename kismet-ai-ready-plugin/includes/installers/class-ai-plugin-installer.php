@@ -26,14 +26,22 @@ class Kismet_AI_Plugin_Installer {
         error_log("KISMET INSTALLER: AI Plugin activation starting");
         
         try {
-            // Create .well-known directory if needed
-            self::create_well_known_directory();
+            // Use endpoint manager for intelligent endpoint creation
+            $endpoint_manager = Kismet_Endpoint_Manager::get_instance();
             
-            // Generate static AI plugin file ONE TIME
-            self::create_static_ai_plugin_file();
+            $test_results = $endpoint_manager->register_endpoint(array(
+                'path' => '/.well-known/ai-plugin.json',
+                'content_generator' => array(self::class, 'generate_ai_plugin_content'),
+                'content_type' => 'application/json'
+            ));
+            
+            // Log the approach used
+            $approach = $test_results['recommended_approach'] ?? 'unknown';
+            error_log("KISMET INSTALLER: AI Plugin endpoint using approach: " . $approach);
             
             // Set activation timestamp
             update_option('kismet_ai_plugin_activated', current_time('timestamp'));
+            update_option('kismet_ai_plugin_approach', $approach);
             
             error_log("KISMET INSTALLER: AI Plugin activation completed successfully");
             
@@ -50,13 +58,15 @@ class Kismet_AI_Plugin_Installer {
         error_log("KISMET INSTALLER: AI Plugin deactivation starting");
         
         try {
-            // Remove static file
-            self::cleanup_static_file();
+            // Use endpoint manager for cleanup
+            $endpoint_manager = Kismet_Endpoint_Manager::get_instance();
+            $endpoint_manager->cleanup_endpoint('/.well-known/ai-plugin.json');
             
             // Clean up options
             delete_option('kismet_ai_plugin_activated');
             delete_option('kismet_ai_plugin_static_generated');
             delete_option('kismet_ai_plugin_settings_updated');
+            delete_option('kismet_ai_plugin_approach');
             
             error_log("KISMET INSTALLER: AI Plugin deactivation completed");
             
@@ -117,7 +127,7 @@ class Kismet_AI_Plugin_Installer {
      * ALL database operations happen here during activation.
      * This content is static until plugin settings change.
      */
-    private static function generate_ai_plugin_content() {
+    public static function generate_ai_plugin_content() {
         // Perform ALL expensive database operations NOW (activation time)
         $site_url = get_site_url();           // DB operation
         $site_name = get_bloginfo('name');    // DB operation  

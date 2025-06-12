@@ -21,29 +21,64 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+// Basic plugin loading detection
+error_log('KISMET PLUGIN: Main plugin file loaded - ' . __FILE__);
+
 // Define plugin constants
 define('KISMET_PLUGIN_PATH', plugin_dir_path(__FILE__));
 define('KISMET_PLUGIN_URL', plugin_dir_url(__FILE__));
 
 // Include INSTALLER classes (run ONCE during activation/deactivation)
+error_log('KISMET PLUGIN: Loading installer classes...');
 require_once KISMET_PLUGIN_PATH . 'includes/installers/class-ai-plugin-installer.php';
+error_log('KISMET PLUGIN: Loaded class-ai-plugin-installer.php');
 require_once KISMET_PLUGIN_PATH . 'includes/installers/class-mcp-servers-installer.php';
+error_log('KISMET PLUGIN: Loaded class-mcp-servers-installer.php');
 require_once KISMET_PLUGIN_PATH . 'includes/installers/class-robots-installer.php';
+error_log('KISMET PLUGIN: Loaded class-robots-installer.php');
 require_once KISMET_PLUGIN_PATH . 'includes/installers/class-llms-installer.php';
+error_log('KISMET PLUGIN: Loaded class-llms-installer.php');
 require_once KISMET_PLUGIN_PATH . 'includes/installers/class-ask-installer.php';
+error_log('KISMET PLUGIN: Loaded class-ask-installer.php');
 
 // Include HANDLER classes (only /ask needs runtime handling - others are static files)
+error_log('KISMET PLUGIN: Loading handler classes...');
 require_once KISMET_PLUGIN_PATH . 'includes/handlers/class-ask-handler.php';
+error_log('KISMET PLUGIN: Loaded class-ask-handler.php');
+
+// Include SHARED classes 
+error_log('KISMET PLUGIN: Loading shared classes...');
+require_once KISMET_PLUGIN_PATH . 'includes/shared/class-file-safety-manager.php';
+error_log('KISMET PLUGIN: Loaded class-file-safety-manager.php');
+require_once KISMET_PLUGIN_PATH . 'includes/shared/class-route-tester.php';
+error_log('KISMET PLUGIN: Loaded class-route-tester.php');
+require_once KISMET_PLUGIN_PATH . 'includes/shared/class-endpoint-manager.php';
+error_log('KISMET PLUGIN: Loaded class-endpoint-manager.php');
 
 // Include admin classes (only loaded in admin context)
+error_log('KISMET PLUGIN: Loading admin classes...');
 require_once KISMET_PLUGIN_PATH . 'includes/admin/class-ai-plugin-admin.php';
+error_log('KISMET PLUGIN: Loaded class-ai-plugin-admin.php');
+require_once KISMET_PLUGIN_PATH . 'includes/admin/class-endpoint-status-dashboard.php';
+error_log('KISMET PLUGIN: Loaded class-endpoint-status-dashboard.php');
+
+// Include plugin page notice classes
+error_log('KISMET PLUGIN: Loading plugin page notice classes...');
+require_once KISMET_PLUGIN_PATH . 'includes/plugin-page-notice/class-endpoint-status-notice.php';
+error_log('KISMET PLUGIN: Loaded class-endpoint-status-notice.php');
 
 // Include modular environment detection system
+error_log('KISMET PLUGIN: Loading environment classes...');
 require_once KISMET_PLUGIN_PATH . 'includes/environment/class-system-checker.php';
+error_log('KISMET PLUGIN: Loaded class-system-checker.php');
 require_once KISMET_PLUGIN_PATH . 'includes/environment/class-plugin-detector.php';
+error_log('KISMET PLUGIN: Loaded class-plugin-detector.php');
 require_once KISMET_PLUGIN_PATH . 'includes/environment/class-endpoint-tester.php';
+error_log('KISMET PLUGIN: Loaded class-endpoint-tester.php');
 require_once KISMET_PLUGIN_PATH . 'includes/environment/class-report-generator.php';
+error_log('KISMET PLUGIN: Loaded class-report-generator.php');
 require_once KISMET_PLUGIN_PATH . 'includes/environment/class-environment-detector-v2.php';
+error_log('KISMET PLUGIN: Loaded class-environment-detector-v2.php');
 
 /**
  * Main plugin class - Clean Architecture
@@ -56,16 +91,36 @@ class Kismet_Ask_Proxy_Plugin {
     
     private $ask_handler;
     private $ai_plugin_admin;
+    private $endpoint_manager;
+    private $endpoint_status_notice;
     
     public function __construct() {
-        // Initialize only the /ask handler (others are static files)
+        error_log('KISMET PLUGIN: Constructor starting');
+        
+        // Initialize endpoint manager for intelligent endpoint handling
+        $this->endpoint_manager = Kismet_Endpoint_Manager::get_instance();
+        error_log('KISMET PLUGIN: Endpoint manager initialized');
+        
+        // Initialize only the /ask handler (others managed by endpoint manager)
         $this->ask_handler = new Kismet_Ask_Handler();
+        error_log('KISMET PLUGIN: Ask handler initialized');
         
         // Initialize admin interface (only loads in admin context)
         $this->ai_plugin_admin = new Kismet_AI_Plugin_Admin();
+        error_log('KISMET PLUGIN: Admin interface initialized');
+        
+        // Initialize endpoint status notice (shows across admin pages)
+        $this->endpoint_status_notice = new Kismet_Endpoint_Status_Notice();
+        error_log('KISMET PLUGIN: Endpoint status notice initialized');
     
+        // Add endpoint manager hooks
+        add_filter('query_vars', array($this->endpoint_manager, 'add_query_vars'));
+        add_action('template_redirect', array($this->endpoint_manager, 'handle_template_redirect'));
+        
         // Add a "Settings" link to the plugin row
         add_filter('plugin_action_links_' . plugin_basename(__FILE__), array($this, 'add_settings_link'));
+        
+        error_log('KISMET PLUGIN: Constructor completed successfully');
     }
     
     /**
@@ -79,8 +134,21 @@ class Kismet_Ask_Proxy_Plugin {
 }
 
 // Initialize the plugin
+error_log('KISMET PLUGIN: About to initialize main plugin class');
 global $kismet_ask_proxy_plugin;
 $kismet_ask_proxy_plugin = new Kismet_Ask_Proxy_Plugin();
+error_log('KISMET PLUGIN: Main plugin class initialized successfully');
+
+// Check plugin activation status
+$plugin_file = plugin_basename(__FILE__);
+$is_active = is_plugin_active($plugin_file);
+error_log('KISMET PLUGIN: Plugin activation status - ' . ($is_active ? 'ACTIVE' : 'INACTIVE') . ' for file: ' . $plugin_file);
+
+// Manual activation trigger for debugging
+if (isset($_GET['kismet_force_activate']) && $_GET['kismet_force_activate'] === 'true') {
+    error_log('KISMET PLUGIN: Manual activation triggered via URL parameter');
+    kismet_manual_activation();
+}
 
 // Add admin notices for environment compatibility
 add_action('admin_notices', 'kismet_display_environment_notices');
@@ -116,12 +184,18 @@ function kismet_display_environment_notices() {
 /**
  * Plugin activation hook - ALL database operations happen HERE
  */
+error_log('KISMET PLUGIN: Registering activation hook for file: ' . __FILE__);
 register_activation_hook(__FILE__, function() {
     error_log('KISMET ACTIVATION: Starting plugin activation');
+    error_log('KISMET ACTIVATION: Activation hook triggered for file: ' . __FILE__);
     
     try {
+        // Test if we can get this far
+        error_log('KISMET ACTIVATION: About to create environment detector');
+        
         // Run environment check
         $environment_detector = new Kismet_Environment_Detector_V2();
+        error_log('KISMET ACTIVATION: Environment detector created successfully');
         $compatibility_report = $environment_detector->run_full_environment_check();
         
         // Store the compatibility report for admin display
@@ -135,11 +209,25 @@ register_activation_hook(__FILE__, function() {
         // Run ALL installers - they do ALL database operations ONCE
         error_log('KISMET ACTIVATION: Running installers...');
         
+        error_log('KISMET ACTIVATION: About to run AI Plugin Installer');
         Kismet_AI_Plugin_Installer::activate();
+        error_log('KISMET ACTIVATION: AI Plugin Installer completed');
+        
+        error_log('KISMET ACTIVATION: About to run MCP Servers Installer');
         Kismet_MCP_Servers_Installer::activate();
+        error_log('KISMET ACTIVATION: MCP Servers Installer completed');
+        
+        error_log('KISMET ACTIVATION: About to run Robots Installer');
         Kismet_Robots_Installer::activate();
+        error_log('KISMET ACTIVATION: Robots Installer completed');
+        
+        error_log('KISMET ACTIVATION: About to run LLMS Installer');
         Kismet_LLMS_Installer::activate();
+        error_log('KISMET ACTIVATION: LLMS Installer completed');
+        
+        error_log('KISMET ACTIVATION: About to run Ask Installer');
         Kismet_Ask_Installer::activate();
+        error_log('KISMET ACTIVATION: Ask Installer completed');
         
         // Flush rewrite rules ONCE
         flush_rewrite_rules();
@@ -182,7 +270,74 @@ register_deactivation_hook(__FILE__, function() {
 /**
  * Plugin uninstall hook - complete cleanup
  */
-register_uninstall_hook(__FILE__, function() {
+register_uninstall_hook(__FILE__, 'kismet_plugin_uninstall');
+
+/**
+ * Manual activation function for debugging
+ */
+function kismet_manual_activation() {
+    error_log('KISMET MANUAL ACTIVATION: Starting manual activation');
+    error_log('KISMET MANUAL ACTIVATION: Function called successfully');
+    
+    try {
+        // Test if we can get this far
+        error_log('KISMET MANUAL ACTIVATION: About to create environment detector');
+        
+        // Run environment check
+        $environment_detector = new Kismet_Environment_Detector_V2();
+        error_log('KISMET MANUAL ACTIVATION: Environment detector created successfully');
+        $compatibility_report = $environment_detector->run_full_environment_check();
+        
+        // Store the compatibility report for admin display
+        update_option('kismet_environment_report', $compatibility_report);
+        
+        if (!$environment_detector->is_environment_compatible()) {
+            error_log('KISMET MANUAL ACTIVATION WARNING: Environment compatibility issues detected');
+            add_option('kismet_activation_warning', 'Environment compatibility issues detected during activation');
+        }
+        
+        // Run ALL installers - they do ALL database operations ONCE
+        error_log('KISMET MANUAL ACTIVATION: Running installers...');
+        
+        error_log('KISMET MANUAL ACTIVATION: About to run AI Plugin Installer');
+        Kismet_AI_Plugin_Installer::activate();
+        error_log('KISMET MANUAL ACTIVATION: AI Plugin Installer completed');
+        
+        error_log('KISMET MANUAL ACTIVATION: About to run MCP Servers Installer');
+        Kismet_MCP_Servers_Installer::activate();
+        error_log('KISMET MANUAL ACTIVATION: MCP Servers Installer completed');
+        
+        error_log('KISMET MANUAL ACTIVATION: About to run Robots Installer');
+        Kismet_Robots_Installer::activate();
+        error_log('KISMET MANUAL ACTIVATION: Robots Installer completed');
+        
+        error_log('KISMET MANUAL ACTIVATION: About to run LLMS Installer');
+        Kismet_LLMS_Installer::activate();
+        error_log('KISMET MANUAL ACTIVATION: LLMS Installer completed');
+        
+        error_log('KISMET MANUAL ACTIVATION: About to run Ask Installer');
+        Kismet_Ask_Installer::activate();
+        error_log('KISMET MANUAL ACTIVATION: Ask Installer completed');
+        
+        // Flush rewrite rules ONCE
+        flush_rewrite_rules();
+        
+        error_log('KISMET MANUAL ACTIVATION: Manual activation completed successfully');
+        
+        // Send registration notification to Kismet backend
+        kismet_register_plugin_activation();
+        
+    } catch (Exception $e) {
+        error_log('KISMET MANUAL ACTIVATION ERROR: ' . $e->getMessage());
+        error_log('KISMET MANUAL ACTIVATION ERROR: Stack trace: ' . $e->getTraceAsString());
+        add_option('kismet_activation_warning', 'Manual activation errors occurred: ' . $e->getMessage());
+    }
+}
+
+/**
+ * Named function for plugin uninstall - WordPress requires named functions for uninstall hooks
+ */
+function kismet_plugin_uninstall() {
     // Complete database cleanup
     Kismet_Ask_Installer::uninstall();
     
@@ -191,7 +346,7 @@ register_uninstall_hook(__FILE__, function() {
     delete_option('kismet_activation_warning');
     
     error_log('KISMET UNINSTALL: Plugin completely removed');
-});
+}
 
 /**
  * Send registration notification to Kismet backend

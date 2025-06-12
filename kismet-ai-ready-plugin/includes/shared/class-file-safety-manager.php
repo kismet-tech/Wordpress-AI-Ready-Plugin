@@ -242,6 +242,38 @@ class Kismet_File_Safety_Manager {
                 $analysis['is_safe_to_overwrite'] = true;
                 $analysis['reason'] = 'Appears to be LLMS.txt format - safe to overwrite';
             }
+        } elseif ($filename === 'robots.txt') {
+            // Check if robots.txt appears to be a standard WordPress robots.txt
+            $is_standard_robots = (
+                strpos($content, 'User-agent:') !== false &&
+                (strpos($content, 'Disallow: /wp-admin/') !== false || 
+                 strpos($content, 'wp-sitemap.xml') !== false ||
+                 preg_match('/^User-agent:\s*\*\s*$/mi', $content))
+            );
+            
+            // Check if it already contains our AI section
+            $has_our_content = strpos($content, '# AI/LLM Discovery Section') !== false;
+            
+            // Check if it's empty or very minimal
+            $is_minimal = strlen(trim($content)) < 200;
+            
+            if ($is_standard_robots || $has_our_content || $is_minimal) {
+                $analysis['content_type'] = 'robots_txt';
+                $analysis['has_user_data'] = false;
+                $analysis['is_safe_to_overwrite'] = true;
+                if ($has_our_content) {
+                    $analysis['reason'] = 'robots.txt already contains our AI section - safe to update';
+                } elseif ($is_standard_robots) {
+                    $analysis['reason'] = 'Standard WordPress robots.txt format - safe to enhance';
+                } else {
+                    $analysis['reason'] = 'Minimal robots.txt content - safe to overwrite';
+                }
+            } else {
+                $analysis['content_type'] = 'robots_txt';
+                $analysis['has_user_data'] = true;
+                $analysis['is_safe_to_overwrite'] = false;
+                $analysis['reason'] = 'robots.txt contains custom content - requires manual review';
+            }
         } elseif (strpos($filename, '.json') !== false) {
             $json_data = @json_decode($content, true);
             if ($json_data !== null) {

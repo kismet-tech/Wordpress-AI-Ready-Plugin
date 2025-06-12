@@ -14,30 +14,52 @@ if (!defined('ABSPATH')) {
 
 class Kismet_AI_Plugin_Admin {
     
+    private $endpoint_dashboard;
+    
     public function __construct() {
         // Only load in admin context
         if (!is_admin()) {
             return;
         }
         
+        // Initialize the endpoint status dashboard
+        require_once(plugin_dir_path(__FILE__) . 'class-endpoint-status-dashboard.php');
+        $this->endpoint_dashboard = new Kismet_Endpoint_Status_Dashboard();
+        
         // Register admin hooks
         add_action('admin_menu', array($this, 'add_admin_menu'));
         add_action('admin_init', array($this, 'settings_init'));
         
-        // Register AJAX handler for manual regeneration
+        // Register AJAX handler for manual regeneration (keeping existing functionality)
         add_action('wp_ajax_kismet_regenerate_ai_plugin', array($this, 'ajax_regenerate_static_file'));
+        
+        // Add admin scripts and styles
+        add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_scripts'));
+    }
+    
+    /**
+     * Enqueue admin scripts and styles - now using the dashboard class
+     */
+    public function enqueue_admin_scripts($hook_suffix) {
+        // Only load on our settings page
+        if ($hook_suffix !== 'settings_page_kismet-ai-plugin-settings') {
+            return;
+        }
+        
+        // Use the dashboard class for scripts and styles
+        wp_add_inline_script('jquery', $this->endpoint_dashboard->get_dashboard_script());
+        wp_add_inline_style('wp-admin', $this->endpoint_dashboard->get_dashboard_styles());
     }
     
     /**
      * Add admin menu for AI Plugin settings
      */
     public function add_admin_menu() {
-        add_submenu_page(
-            'kismet-ai-ready-plugin',
-            'AI Plugin Settings',
-            'AI Plugin',
+        add_options_page(
+            'Kismet AI Plugin Settings',
+            'Kismet AI Plugin',
             'manage_options',
-            'kismet-ai-plugin',
+            'kismet-ai-plugin-settings',
             array($this, 'settings_page')
         );
     }
@@ -56,9 +78,9 @@ class Kismet_AI_Plugin_Admin {
         
         // Add settings sections
         add_settings_section(
-            'kismet_ai_plugin_static_info_section',
-            'Static File Optimization',
-            array($this, 'static_info_section_callback'),
+            'kismet_ai_plugin_status_section',
+            'Endpoint Status Dashboard',
+            array($this, 'status_section_callback'),
             'kismet_ai_plugin'
         );
         
@@ -106,74 +128,20 @@ class Kismet_AI_Plugin_Admin {
     }
     
     /**
-     * Static file optimization info section
+     * Status dashboard section - now using the dedicated dashboard class
      */
-    public function static_info_section_callback() {
-        echo '<div class="notice notice-info"><p>';
-        echo '<strong>🚀 Performance Optimization:</strong> This plugin uses static file generation instead of dynamic PHP + database calls.<br>';
-        echo '<strong>Before:</strong> Every AI discovery request triggered 15+ database operations<br>';
-        echo '<strong>After:</strong> Static file served directly by web server = zero PHP execution + zero database operations<br>';
-        echo '<strong>File regenerates automatically</strong> when you save changes below.';
-        echo '</p></div>';
-        
-        $status = $this->get_ai_plugin_status();
-        echo '<p><strong>Current Status:</strong></p>';
-        echo '<ul>';
-        echo '<li>Static file exists: ' . ($status['static_file_exists'] ? '✅ Yes' : '❌ No') . '</li>';
-        echo '<li>File is current: ' . ($status['static_file_current'] ? '✅ Yes' : '⚠️ Needs regeneration') . '</li>';
-        echo '<li>Creation method: <code>' . $status['creation_method'] . '</code></li>';
-        echo '<li>Performance: ' . $status['performance_note'] . '</li>';
-        echo '</ul>';
-        
-        // Manual regeneration button
-        echo '<p>';
-        echo '<button type="button" id="regenerate-static-file" class="button button-secondary">🔄 Regenerate Static File Now</button>';
-        echo '</p>';
-        
-        // Add JavaScript for manual regeneration
-        ?>
-        <script>
-        document.getElementById('regenerate-static-file').addEventListener('click', function() {
-            var button = this;
-            button.disabled = true;
-            button.textContent = '🔄 Regenerating...';
-            
-            fetch(ajaxurl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: 'action=kismet_regenerate_ai_plugin&nonce=<?php echo wp_create_nonce('kismet_regenerate_nonce'); ?>'
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    button.textContent = '✅ Regenerated Successfully';
-                    setTimeout(() => {
-                        button.disabled = false;
-                        button.textContent = '🔄 Regenerate Static File Now';
-                    }, 3000);
-                } else {
-                    button.textContent = '❌ Regeneration Failed';
-                    console.error('Regeneration failed:', data);
-                }
-            })
-            .catch(error => {
-                button.textContent = '❌ Error';
-                console.error('Error:', error);
-            });
-        });
-        </script>
-        <?php
+    public function status_section_callback() {
+        echo '<p>Real-time status of all Kismet AI endpoints. Click "Test Now" to check individual endpoints or "Test All" for a complete status check.</p>';
+        $this->endpoint_dashboard->render_dashboard();
     }
-    
+
     /**
      * Custom JSON configuration section
      */
     public function custom_json_section_callback() {
         echo '<p>Configure a custom AI plugin JSON source or use auto-generated values below.</p>';
         
-        // Show current endpoint status
+        // Show current endpoint status (keeping the existing functionality)
         $status = $this->get_ai_plugin_status();
         if ($status['endpoint_created']) {
             echo '<div class="notice notice-success"><p>';
@@ -182,7 +150,7 @@ class Kismet_AI_Plugin_Admin {
             echo '</p></div>';
         } else {
             echo '<div class="notice notice-warning"><p>';
-            echo "⚠️ AI Plugin endpoint is not yet active. Check the Kismet ENV page for diagnostics.";
+            echo "⚠️ AI Plugin endpoint is not yet active. Check the status dashboard above for detailed diagnostics.";
             echo '</p></div>';
         }
     }

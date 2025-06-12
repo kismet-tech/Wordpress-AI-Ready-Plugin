@@ -67,6 +67,10 @@ if (!defined('ABSPATH')) {
  */
 class Kismet_Route_Tester {
     
+    public function __construct() {
+        error_log('KISMET ROUTE TESTER: Constructor called');
+    }
+    
     /**
      * DETERMINE SERVING METHOD: Test if hosting supports nginx/apache vs WordPress rewrite
      * 
@@ -89,6 +93,10 @@ class Kismet_Route_Tester {
      * @return array Comprehensive test results with recommendations
      */
     public function determine_serving_method($path, $test_content = 'test', $options = array()) {
+        error_log("KISMET ROUTE TESTER: ===== STARTING ROUTE TEST =====");
+        error_log("KISMET ROUTE TESTER: Original path: " . $path);
+        error_log("KISMET ROUTE TESTER: Test content length: " . strlen($test_content) . " bytes");
+        
         $results = array(
             'path' => $path,
             'timestamp' => current_time('mysql'),
@@ -103,23 +111,36 @@ class Kismet_Route_Tester {
         
         // Generate unique test path to avoid conflicts
         $test_path = $this->generate_test_path($path);
+        error_log("KISMET ROUTE TESTER: Generated test path: " . $test_path);
         
         try {
             // Test WordPress rewrite approach
+            error_log("KISMET ROUTE TESTER: ----- TESTING WORDPRESS REWRITE -----");
             $results['wordpress_rewrite_test'] = $this->test_wordpress_rewrite($test_path, $test_content);
+            error_log("KISMET ROUTE TESTER: WordPress rewrite test completed. Success: " . ($results['wordpress_rewrite_test']['success'] ? 'YES' : 'NO'));
             
             // Test physical file approach
+            error_log("KISMET ROUTE TESTER: ----- TESTING PHYSICAL FILE -----");
             $results['physical_file_test'] = $this->test_physical_file($test_path, $test_content);
+            error_log("KISMET ROUTE TESTER: Physical file test completed. Success: " . ($results['physical_file_test']['success'] ? 'YES' : 'NO'));
             
             // Determine best approach and overall success
+            error_log("KISMET ROUTE TESTER: ----- ANALYZING RESULTS -----");
             $this->analyze_test_results($results);
+            error_log("KISMET ROUTE TESTER: Analysis complete. Recommended approach: " . ($results['recommended_approach'] ?? 'NONE'));
             
         } catch (Exception $e) {
-            $results['errors'][] = 'Exception during testing: ' . $e->getMessage();
+            $error_msg = 'Exception during testing: ' . $e->getMessage();
+            $results['errors'][] = $error_msg;
+            error_log("KISMET ROUTE TESTER ERROR: " . $error_msg);
         }
         
         // Clean up any test artifacts
+        error_log("KISMET ROUTE TESTER: ----- CLEANING UP TEST ARTIFACTS -----");
         $this->cleanup_test_artifacts($test_path);
+        
+        error_log("KISMET ROUTE TESTER: ===== ROUTE TEST COMPLETE =====");
+        error_log("KISMET ROUTE TESTER: Final result - Can proceed: " . ($results['can_proceed'] ? 'YES' : 'NO') . ", Approach: " . ($results['recommended_approach'] ?? 'NONE'));
         
         return $results;
     }
@@ -160,9 +181,17 @@ class Kismet_Route_Tester {
         $site_url = get_site_url();
         $test_url = $site_url . $path;
         
+        // Determine if this is a local development environment
+        $is_local_dev = (
+            strpos($test_url, 'localhost') !== false ||
+            strpos($test_url, '.local') !== false ||
+            strpos($test_url, '127.0.0.1') !== false ||
+            strpos($test_url, '::1') !== false
+        );
+        
         $response = wp_remote_get($test_url, array(
             'timeout' => 10,
-            'sslverify' => true,
+            'sslverify' => !$is_local_dev, // Disable SSL verification for local dev
             'user-agent' => 'Kismet Route Tester/1.0'
         ));
         
@@ -182,7 +211,7 @@ class Kismet_Route_Tester {
      */
     private function generate_test_path($original_path) {
         $timestamp = time();
-        $random = wp_rand(1000, 9999);
+        $random = rand(1000, 9999);
         $path_info = pathinfo($original_path);
         
         // Insert test marker before extension
@@ -206,6 +235,8 @@ class Kismet_Route_Tester {
      * @return array Test results
      */
     private function test_wordpress_rewrite($test_path, $test_content) {
+        error_log("KISMET ROUTE TESTER: WordPress rewrite test starting for: " . $test_path);
+        
         $results = array(
             'attempted' => true,
             'rewrite_added' => false,
@@ -218,22 +249,39 @@ class Kismet_Route_Tester {
         
         try {
             // Add temporary rewrite rule
+            error_log("KISMET ROUTE TESTER: Adding temporary rewrite rule...");
             $rule_added = $this->add_temporary_rewrite_rule($test_path, $test_content);
             $results['rewrite_added'] = $rule_added;
+            error_log("KISMET ROUTE TESTER: Rewrite rule added: " . ($rule_added ? 'YES' : 'NO'));
             
             if ($rule_added) {
                 // Flush rewrite rules to make it active
+                error_log("KISMET ROUTE TESTER: Flushing rewrite rules to activate...");
                 flush_rewrite_rules();
+                error_log("KISMET ROUTE TESTER: Rewrite rules flushed");
                 
                 // Test HTTP accessibility
+                error_log("KISMET ROUTE TESTER: Testing HTTP accessibility via WordPress rewrite...");
                 $http_test = $this->test_http_access($test_path);
                 $results = array_merge($results, $http_test);
                 $results['success'] = $http_test['http_accessible'] && 
-                                    $http_test['response_code'] === 200;
+                                    $http_test['response_code'] === 200 &&
+                                    $http_test['served_by_wordpress'];
+                
+                error_log("KISMET ROUTE TESTER: WordPress rewrite HTTP test results:");
+                error_log("KISMET ROUTE TESTER:   - HTTP accessible: " . ($http_test['http_accessible'] ? 'YES' : 'NO'));
+                error_log("KISMET ROUTE TESTER:   - Response code: " . ($http_test['response_code'] ?? 'NULL'));
+                error_log("KISMET ROUTE TESTER:   - Served by WordPress: " . ($http_test['served_by_wordpress'] ? 'YES' : 'NO'));
+                error_log("KISMET ROUTE TESTER:   - Response time: " . ($http_test['response_time'] ?? 'NULL') . "ms");
+                error_log("KISMET ROUTE TESTER:   - Final success: " . ($results['success'] ? 'YES' : 'NO'));
+            } else {
+                error_log("KISMET ROUTE TESTER: Skipping HTTP test - rewrite rule not added");
             }
             
         } catch (Exception $e) {
-            $results['error'] = 'WordPress rewrite test failed: ' . $e->getMessage();
+            $error_msg = 'WordPress rewrite test failed: ' . $e->getMessage();
+            $results['error'] = $error_msg;
+            error_log("KISMET ROUTE TESTER ERROR: " . $error_msg);
         }
         
         return $results;
@@ -247,6 +295,8 @@ class Kismet_Route_Tester {
      * @return array Test results
      */
     private function test_physical_file($test_path, $test_content) {
+        error_log("KISMET ROUTE TESTER: Physical file test starting for: " . $test_path);
+        
         $results = array(
             'attempted' => true,
             'file_created' => false,
@@ -263,38 +313,69 @@ class Kismet_Route_Tester {
             // Determine physical file path
             $file_path = $this->get_physical_file_path($test_path);
             $results['file_path'] = $file_path;
+            error_log("KISMET ROUTE TESTER: Target file path: " . $file_path);
             
             // Check if we can create the directory structure
             $dir_path = dirname($file_path);
+            error_log("KISMET ROUTE TESTER: Target directory: " . $dir_path);
+            
             if (!file_exists($dir_path)) {
+                error_log("KISMET ROUTE TESTER: Directory doesn't exist, creating...");
                 $dir_created = wp_mkdir_p($dir_path);
                 if (!$dir_created) {
-                    $results['error'] = 'Cannot create directory: ' . $dir_path;
+                    $error_msg = 'Cannot create directory: ' . $dir_path;
+                    $results['error'] = $error_msg;
+                    error_log("KISMET ROUTE TESTER ERROR: " . $error_msg);
                     return $results;
                 }
+                error_log("KISMET ROUTE TESTER: Directory created successfully");
+            } else {
+                error_log("KISMET ROUTE TESTER: Directory already exists");
             }
             
             // Check if target file already exists (safety check)
             if (file_exists($file_path)) {
-                $results['error'] = 'Test file already exists: ' . $file_path;
+                $error_msg = 'Test file already exists: ' . $file_path;
+                $results['error'] = $error_msg;
+                error_log("KISMET ROUTE TESTER ERROR: " . $error_msg);
                 return $results;
             }
             
             // Create test file
+            error_log("KISMET ROUTE TESTER: Creating test file with " . strlen($test_content) . " bytes...");
             $file_written = file_put_contents($file_path, $test_content);
             $results['file_created'] = ($file_written !== false);
             $results['file_writable'] = is_writable($file_path);
             
+            error_log("KISMET ROUTE TESTER: File creation results:");
+            error_log("KISMET ROUTE TESTER:   - Bytes written: " . ($file_written !== false ? $file_written : 'FAILED'));
+            error_log("KISMET ROUTE TESTER:   - File created: " . ($results['file_created'] ? 'YES' : 'NO'));
+            error_log("KISMET ROUTE TESTER:   - File writable: " . ($results['file_writable'] ? 'YES' : 'NO'));
+            
             if ($results['file_created']) {
                 // Test HTTP accessibility
+                error_log("KISMET ROUTE TESTER: Testing HTTP accessibility via physical file...");
                 $http_test = $this->test_http_access($test_path);
                 $results = array_merge($results, $http_test);
                 $results['success'] = $http_test['http_accessible'] && 
-                                    $http_test['response_code'] === 200;
+                                    $http_test['response_code'] === 200 &&
+                                    $http_test['served_by_webserver'];
+                
+                error_log("KISMET ROUTE TESTER: Physical file HTTP test results:");
+                error_log("KISMET ROUTE TESTER:   - HTTP accessible: " . ($http_test['http_accessible'] ? 'YES' : 'NO'));
+                error_log("KISMET ROUTE TESTER:   - Response code: " . ($http_test['response_code'] ?? 'NULL'));
+                error_log("KISMET ROUTE TESTER:   - Served by webserver: " . ($http_test['served_by_webserver'] ? 'YES' : 'NO'));
+                error_log("KISMET ROUTE TESTER:   - Served by WordPress: " . ($http_test['served_by_wordpress'] ? 'YES' : 'NO'));
+                error_log("KISMET ROUTE TESTER:   - Response time: " . ($http_test['response_time'] ?? 'NULL') . "ms");
+                error_log("KISMET ROUTE TESTER:   - Final success: " . ($results['success'] ? 'YES' : 'NO'));
+            } else {
+                error_log("KISMET ROUTE TESTER: Skipping HTTP test - file not created");
             }
             
         } catch (Exception $e) {
-            $results['error'] = 'Physical file test failed: ' . $e->getMessage();
+            $error_msg = 'Physical file test failed: ' . $e->getMessage();
+            $results['error'] = $error_msg;
+            error_log("KISMET ROUTE TESTER ERROR: " . $error_msg);
         }
         
         return $results;
@@ -307,33 +388,97 @@ class Kismet_Route_Tester {
      * @return array HTTP test results
      */
     private function test_http_access($test_path) {
+        $site_url = get_site_url();
+        $test_url = $site_url . $test_path;
+        
+        error_log("KISMET ROUTE TESTER: HTTP access test starting");
+        error_log("KISMET ROUTE TESTER: Site URL: " . $site_url);
+        error_log("KISMET ROUTE TESTER: Test URL: " . $test_url);
+        
         $results = array(
             'http_accessible' => false,
             'response_code' => null,
             'response_content' => null,
             'response_time' => null,
+            'served_by_webserver' => false,
+            'served_by_wordpress' => false,
             'error' => null
         );
         
-        $site_url = get_site_url();
-        $test_url = $site_url . $test_path;
-        
         $start_time = microtime(true);
         
-        $response = wp_remote_get($test_url, array(
+        error_log("KISMET ROUTE TESTER: Making HTTP request...");
+        
+        // Determine if this is a local development environment
+        $is_local_dev = (
+            strpos($test_url, 'localhost') !== false ||
+            strpos($test_url, '.local') !== false ||
+            strpos($test_url, '127.0.0.1') !== false ||
+            strpos($test_url, '::1') !== false
+        );
+        
+        $request_args = array(
             'timeout' => 10,
-            'sslverify' => true,
+            'sslverify' => !$is_local_dev, // Disable SSL verification for local dev
             'user-agent' => 'Kismet Route Tester/1.0'
-        ));
+        );
+        
+        if ($is_local_dev) {
+            error_log("KISMET ROUTE TESTER: Local development environment detected - disabling SSL verification");
+        }
+        
+        $response = wp_remote_get($test_url, $request_args);
         
         $results['response_time'] = round((microtime(true) - $start_time) * 1000, 2); // ms
+        error_log("KISMET ROUTE TESTER: HTTP request completed in " . $results['response_time'] . "ms");
         
         if (is_wp_error($response)) {
             $results['error'] = $response->get_error_message();
+            error_log("KISMET ROUTE TESTER: HTTP request failed: " . $results['error']);
         } else {
             $results['response_code'] = wp_remote_retrieve_response_code($response);
             $results['response_content'] = wp_remote_retrieve_body($response);
             $results['http_accessible'] = ($results['response_code'] === 200);
+            
+            error_log("KISMET ROUTE TESTER: HTTP response received:");
+            error_log("KISMET ROUTE TESTER:   - Response code: " . $results['response_code']);
+            error_log("KISMET ROUTE TESTER:   - Content length: " . strlen($results['response_content']) . " bytes");
+            error_log("KISMET ROUTE TESTER:   - HTTP accessible: " . ($results['http_accessible'] ? 'YES' : 'NO'));
+            
+            // Check headers to determine what served the content
+            $headers = wp_remote_retrieve_headers($response);
+            error_log("KISMET ROUTE TESTER: Analyzing response headers...");
+            
+            // Log key headers for debugging
+            $key_headers = array('server', 'x-powered-by', 'x-pingback', 'content-type');
+            foreach ($key_headers as $header) {
+                if (isset($headers[$header])) {
+                    error_log("KISMET ROUTE TESTER:   - " . ucfirst($header) . ": " . $headers[$header]);
+                }
+            }
+            
+            // WordPress indicators
+            $wordpress_indicators = array(
+                isset($headers['x-powered-by']) && strpos($headers['x-powered-by'], 'PHP') !== false,
+                isset($headers['x-pingback']),
+                strpos($results['response_content'], 'wp-') !== false,
+                strpos($results['response_content'], '<html') !== false && strpos($results['response_content'], 'wordpress') !== false
+            );
+            
+            $results['served_by_wordpress'] = in_array(true, $wordpress_indicators);
+            $results['served_by_webserver'] = $results['http_accessible'] && !$results['served_by_wordpress'];
+            
+            error_log("KISMET ROUTE TESTER: Server detection results:");
+            error_log("KISMET ROUTE TESTER:   - WordPress indicators found: " . array_sum($wordpress_indicators) . "/4");
+            error_log("KISMET ROUTE TESTER:   - Served by WordPress: " . ($results['served_by_wordpress'] ? 'YES' : 'NO'));
+            error_log("KISMET ROUTE TESTER:   - Served by webserver: " . ($results['served_by_webserver'] ? 'YES' : 'NO'));
+            
+            // Log first 100 chars of content for debugging
+            $content_preview = substr($results['response_content'], 0, 100);
+            if (strlen($results['response_content']) > 100) {
+                $content_preview .= '...';
+            }
+            error_log("KISMET ROUTE TESTER:   - Content preview: " . $content_preview);
         }
         
         return $results;
@@ -436,39 +581,64 @@ class Kismet_Route_Tester {
         $wp_success = $results['wordpress_rewrite_test']['success'] ?? false;
         $file_success = $results['physical_file_test']['success'] ?? false;
         
+        error_log("KISMET ROUTE TESTER: Analyzing test results...");
+        error_log("KISMET ROUTE TESTER:   - WordPress rewrite success: " . ($wp_success ? 'YES' : 'NO'));
+        error_log("KISMET ROUTE TESTER:   - Physical file success: " . ($file_success ? 'YES' : 'NO'));
+        
         // Determine overall success and recommended approach
         if ($wp_success && $file_success) {
             $results['overall_success'] = true;
             $results['can_proceed'] = true;
             // Prefer WordPress rewrite for better integration
             $results['recommended_approach'] = 'wordpress_rewrite';
-            $results['warnings'][] = 'Both approaches work - using WordPress rewrite for better integration';
+            $warning_msg = 'Both approaches work - using WordPress rewrite for better integration';
+            $results['warnings'][] = $warning_msg;
+            error_log("KISMET ROUTE TESTER: BOTH APPROACHES WORK - choosing WordPress rewrite");
+            error_log("KISMET ROUTE TESTER: " . $warning_msg);
             
         } elseif ($wp_success) {
             $results['overall_success'] = true;
             $results['can_proceed'] = true;
             $results['recommended_approach'] = 'wordpress_rewrite';
+            error_log("KISMET ROUTE TESTER: ONLY WordPress rewrite works - using it");
             
         } elseif ($file_success) {
             $results['overall_success'] = true;
             $results['can_proceed'] = true;
             $results['recommended_approach'] = 'physical_file';
-            $results['warnings'][] = 'WordPress rewrite failed - using physical file fallback';
+            $warning_msg = 'WordPress rewrite failed - using physical file fallback';
+            $results['warnings'][] = $warning_msg;
+            error_log("KISMET ROUTE TESTER: ONLY physical file works - using it");
+            error_log("KISMET ROUTE TESTER: " . $warning_msg);
             
         } else {
             $results['overall_success'] = false;
             $results['can_proceed'] = false;
             $results['recommended_approach'] = null;
-            $results['errors'][] = 'Both WordPress rewrite and physical file approaches failed';
+            $error_msg = 'Both WordPress rewrite and physical file approaches failed';
+            $results['errors'][] = $error_msg;
+            error_log("KISMET ROUTE TESTER: BOTH APPROACHES FAILED");
+            error_log("KISMET ROUTE TESTER ERROR: " . $error_msg);
             
             // Add specific error details
             if (isset($results['wordpress_rewrite_test']['error'])) {
-                $results['errors'][] = 'WordPress rewrite: ' . $results['wordpress_rewrite_test']['error'];
+                $wp_error = 'WordPress rewrite: ' . $results['wordpress_rewrite_test']['error'];
+                $results['errors'][] = $wp_error;
+                error_log("KISMET ROUTE TESTER ERROR: " . $wp_error);
             }
             if (isset($results['physical_file_test']['error'])) {
-                $results['errors'][] = 'Physical file: ' . $results['physical_file_test']['error'];
+                $file_error = 'Physical file: ' . $results['physical_file_test']['error'];
+                $results['errors'][] = $file_error;
+                error_log("KISMET ROUTE TESTER ERROR: " . $file_error);
             }
         }
+        
+        error_log("KISMET ROUTE TESTER: Analysis complete:");
+        error_log("KISMET ROUTE TESTER:   - Overall success: " . ($results['overall_success'] ? 'YES' : 'NO'));
+        error_log("KISMET ROUTE TESTER:   - Can proceed: " . ($results['can_proceed'] ? 'YES' : 'NO'));
+        error_log("KISMET ROUTE TESTER:   - Recommended approach: " . ($results['recommended_approach'] ?? 'NONE'));
+        error_log("KISMET ROUTE TESTER:   - Warnings: " . count($results['warnings']));
+        error_log("KISMET ROUTE TESTER:   - Errors: " . count($results['errors']));
     }
     
     /**
@@ -477,24 +647,37 @@ class Kismet_Route_Tester {
      * @param string $test_path Test path used
      */
     private function cleanup_test_artifacts($test_path) {
+        error_log("KISMET ROUTE TESTER: Cleaning up test artifacts for: " . $test_path);
+        
         // Clean up transients
         $transient_key = 'kismet_test_content_' . md5($test_path);
-        delete_transient($transient_key);
+        $transient_deleted = delete_transient($transient_key);
+        error_log("KISMET ROUTE TESTER: Transient cleanup (" . $transient_key . "): " . ($transient_deleted ? 'DELETED' : 'NOT_FOUND'));
         
         // Clean up physical test file if it exists
         $file_path = $this->get_physical_file_path($test_path);
         if (file_exists($file_path)) {
-            @unlink($file_path);
+            error_log("KISMET ROUTE TESTER: Removing test file: " . $file_path);
+            $file_deleted = @unlink($file_path);
+            error_log("KISMET ROUTE TESTER: Test file removal: " . ($file_deleted ? 'SUCCESS' : 'FAILED'));
             
             // Try to remove empty directories
             $dir_path = dirname($file_path);
             if ($dir_path !== ABSPATH && is_dir($dir_path)) {
-                @rmdir($dir_path);
+                error_log("KISMET ROUTE TESTER: Attempting to remove empty directory: " . $dir_path);
+                $dir_removed = @rmdir($dir_path);
+                error_log("KISMET ROUTE TESTER: Directory removal: " . ($dir_removed ? 'SUCCESS' : 'FAILED_OR_NOT_EMPTY'));
             }
+        } else {
+            error_log("KISMET ROUTE TESTER: No test file to clean up at: " . $file_path);
         }
         
         // Flush rewrite rules to remove test rules
+        error_log("KISMET ROUTE TESTER: Flushing rewrite rules to remove test rules...");
         flush_rewrite_rules();
+        error_log("KISMET ROUTE TESTER: Rewrite rules flushed");
+        
+        error_log("KISMET ROUTE TESTER: Cleanup complete");
     }
     
     /**

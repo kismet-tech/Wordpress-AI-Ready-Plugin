@@ -3,7 +3,10 @@
   "version": "1.0.0",
   "description": "WordPress plugin for Kismet AI integration - creates /ask endpoint and AI agent discovery",
   "scripts": {
-    "build-plugin": "rm -f kismet-ask-proxy.zip && zip -r kismet-ask-proxy.zip kismet-ask-proxy/"
+    "build-plugin": "rm -f kismet-ai-ready-plugin.zip && zip -r kismet-ai-ready-plugin.zip kismet-ai-ready-plugin/",
+    "install-plugin": "cd /Users/nathanielsena/Local\\ Sites/nginx/app/public && wp plugin install /Users/nathanielsena/Documents/code/Kismet/preact-chatbot/wordpress-plugin/kismet-ai-ready-plugin.zip --force",
+    "activate-plugin": "cd /Users/nathanielsena/Local\\ Sites/nginx/app/public && wp plugin activate kismet-ai-ready-plugin",
+    "deactivate-plugin": "cd /Users/nathanielsena/Local\\ Sites/nginx/app/public && wp plugin deactivate kismet-ai-ready-plugin"
   },
   "repository": {
     "type": "git",

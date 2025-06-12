@@ -154,6 +154,20 @@ class Kismet_Endpoint_Tester {
             'http_code' => $mcp_test['http_code']
         );
         
+        // Test Robots.txt endpoint (REAL HTTP test)
+        $robots_url = $site_url . '/robots.txt';
+        $robots_test = $this->test_real_endpoint($robots_url);
+        $endpoints['robots_txt'] = array(
+            'name' => 'Robots.txt Enhancement',
+            'url' => $robots_url,
+            'check_done' => 'HTTP request to actual endpoint',
+            'result' => $robots_test['result_text'],
+            'what_we_did' => $robots_test['what_exists'],
+            'is_working' => $robots_test['is_working'],
+            'status' => $robots_test['status_icon'],
+            'http_code' => $robots_test['http_code']
+        );
+        
         return $endpoints;
     }
     
