@@ -1,205 +1,100 @@
 # Environment Detection System
 
-This folder contains a comprehensive environment detection and analysis system that helps diagnose WordPress hosting configurations and compatibility issues.
+This folder contains a simplified environment detection system focused on essential functionality.
 
 ## Purpose
 
 The environment detection system provides:
 
-- WordPress hosting environment analysis
-- Plugin compatibility checking
-- Endpoint accessibility testing
-- Detailed diagnostic reporting
-- Troubleshooting recommendations
+- Server detection and strategy selection (via `class-server-detector.php`)
+- Real endpoint testing with HTTP requests (via `class-endpoint-tester.php`)
+- Simple activation-time logging
 
 ## Files
 
-- `class-environment-detector-v2.php` - Main orchestrator and coordinator
-- `class-system-checker.php` - System-level configuration analysis
-- `class-plugin-detector.php` - WordPress plugin detection and analysis
-- `class-endpoint-tester.php` - Endpoint-specific testing and validation
-- `class-report-generator.php` - Comprehensive diagnostic report generation
+- `class-server-detector.php` - **Core server detection, strategy selection, and hosting environment analysis**
+- `class-endpoint-tester.php` - **Real HTTP endpoint testing and validation**
+- `README.md` - This documentation
 
 ## Main Components
 
-### Environment Detector V2
+### Server Detector
 
-**File**: `class-environment-detector-v2.php`
+**File**: `class-server-detector.php`
 
-The main orchestrator that coordinates all environment detection activities:
+The main server detection system that powers strategy selection:
 
-- Manages the detection workflow
-- Coordinates between specialized checkers
-- Provides unified API for environment analysis
-- Handles error aggregation and reporting
-
-### System Checker
-
-**File**: `class-system-checker.php`
-
-Analyzes system-level WordPress configuration:
-
-- PHP version and extensions
-- WordPress core version compatibility
-- Server configuration (Apache/Nginx)
-- File system permissions
-- Memory and resource limits
-- Security configurations
-
-### Plugin Detector
-
-**File**: `class-plugin-detector.php`
-
-WordPress plugin ecosystem analysis:
-
-- Active plugin inventory
-- Plugin conflict detection
-- Version compatibility checking
-- Performance impact assessment
-- Security plugin interactions
+- Detects server type (Apache, Nginx, IIS, LiteSpeed)
+- Analyzes hosting environment (shared, managed, VPS, cloud)
+- Determines file system permissions and capabilities
+- Provides ordered strategy recommendations for each endpoint
+- Used by the main plugin for all server-related decisions
 
 ### Endpoint Tester
 
 **File**: `class-endpoint-tester.php`
 
-Specialized testing for Kismet endpoints:
+Real HTTP testing for endpoint validation:
 
-- Route accessibility verification
-- Response validation
-- Performance benchmarking
-- Error condition testing
-- Security check compliance
-
-### Report Generator
-
-**File**: `class-report-generator.php`
-
-Comprehensive diagnostic reporting:
-
-- HTML and JSON report formats
-- Issue prioritization and categorization
-- Actionable recommendations
-- Technical details for debugging
-- Summary dashboards
+- Makes actual HTTP requests to test endpoint accessibility
+- Validates response content (JSON format, CORS headers, etc.)
+- Reports real-world endpoint status
+- Used by admin dashboard and plugin notices
+- Provides accurate "is it working?" information
 
 ## Detection Workflow
 
-1. **System Analysis**
+1. **Server Analysis**
 
-   - PHP environment check
-   - WordPress configuration review
-   - Server capability assessment
+   - Server type detection via `Server_Detector`
+   - Strategy selection based on server capabilities
+   - Hosting environment assessment
 
-2. **Plugin Analysis**
+2. **Endpoint Testing**
 
-   - Active plugin inventory
-   - Conflict detection
-   - Performance impact review
+   - Real HTTP requests via `Endpoint_Tester`
+   - Response validation and content checking
+   - Status reporting for admin interface
 
-3. **Endpoint Testing**
-
-   - Route accessibility tests
-   - Response validation
-   - Performance benchmarks
-
-4. **Report Generation**
-   - Issue consolidation
-   - Priority assessment
-   - Recommendation generation
+3. **Strategy Execution**
+   - Ordered strategy attempts based on server detection
+   - Fallback to alternative strategies on failure
+   - Real-time status updates
 
 ## Usage
 
-### Basic Environment Check
+### Server Detection
 
 ```php
-$detector = new Kismet_Environment_Detector_V2();
-$results = $detector->run_full_analysis();
+$server_detector = new Kismet_Server_Detector();
+$server_info = $server_detector->get_server_info();
+$strategies = $server_detector->get_endpoint_strategies($endpoint_path);
 ```
 
-### Targeted Analysis
+### Endpoint Testing
 
 ```php
-$detector = new Kismet_Environment_Detector_V2();
-$system_results = $detector->check_system();
-$plugin_results = $detector->check_plugins();
-$endpoint_results = $detector->test_endpoints();
-```
-
-### Generate Report
-
-```php
-$detector = new Kismet_Environment_Detector_V2();
-$results = $detector->run_full_analysis();
-$report = $detector->generate_report($results);
+$endpoint_tester = new Kismet_Endpoint_Tester();
+$test_result = $endpoint_tester->test_real_endpoint($url);
+$all_statuses = $endpoint_tester->get_endpoint_status_summary();
 ```
 
 ## Integration Points
 
 The system integrates with:
 
-- WordPress admin dashboard
-- Plugin activation/deactivation hooks
-- Health check APIs
-- Support ticket systems
-- Automated monitoring tools
+- Main plugin class for strategy selection
+- Admin dashboard for status display
+- Plugin notices for user feedback
+- Strategy implementation system
 
-## Diagnostic Categories
+## Simplified Architecture
 
-### Critical Issues
+This system has been simplified to focus on:
 
-- Security vulnerabilities
-- Plugin conflicts causing failures
-- System resource exhaustion
-- Core compatibility problems
+- **Essential functionality only**
+- **Real-world testing over theoretical checks**
+- **Clean separation of concerns**
+- **Performance-focused implementation**
 
-### Warnings
-
-- Performance concerns
-- Outdated components
-- Suboptimal configurations
-- Potential future issues
-
-### Recommendations
-
-- Performance optimizations
-- Security enhancements
-- Configuration improvements
-- Feature suggestions
-
-## Output Formats
-
-### JSON Report
-
-Structured data for programmatic processing:
-
-```json
-{
-  "environment": {
-    "system": {...},
-    "plugins": {...},
-    "endpoints": {...}
-  },
-  "issues": [...],
-  "recommendations": [...]
-}
-```
-
-### HTML Report
-
-Human-readable diagnostic dashboard with:
-
-- Visual issue indicators
-- Expandable technical details
-- Action item checklists
-- Contact information for support
-
-## Contributing
-
-When working on the environment system:
-
-1. Test across diverse hosting environments
-2. Add new detection capabilities incrementally
-3. Maintain compatibility with WordPress updates
-4. Document new diagnostic checks
-5. Update report templates for new issues
-6. Test performance impact of detection routines
+The complex multi-class orchestration has been removed in favor of direct usage of the two core classes where needed.

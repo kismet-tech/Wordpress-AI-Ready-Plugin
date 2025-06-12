@@ -21,10 +21,14 @@ class Kismet_Endpoint_Status_Notice {
         // Register admin notice hook
         add_action('admin_notices', array($this, 'display_endpoint_status_notice'));
         
-        // Register AJAX handlers for the notice dashboard
+        // Register AJAX handlers for the notice dashboard (testing only)
         add_action('wp_ajax_kismet_notice_test_endpoint', array($this, 'ajax_test_endpoint'));
         add_action('wp_ajax_kismet_notice_test_all_endpoints', array($this, 'ajax_test_all_endpoints'));
         add_action('wp_ajax_kismet_dismiss_status_notice', array($this, 'ajax_dismiss_notice'));
+        
+        // **NEW: Initialize strategy switcher for secure admin actions**
+        require_once(plugin_dir_path(__FILE__) . '../admin/class-strategy-switcher.php');
+        $this->strategy_switcher = new Kismet_Strategy_Switcher();
         
         // Add admin scripts for notice functionality
         add_action('admin_enqueue_scripts', array($this, 'enqueue_notice_scripts'));
@@ -72,6 +76,9 @@ class Kismet_Endpoint_Status_Notice {
         echo '<button type="button" id="kismet-notice-test-all" class="button button-small">Test All Endpoints</button>';
         echo '<button type="button" id="kismet-notice-toggle-details" class="button button-small">Show Details</button>';
         echo '</div>';
+        
+        // **NEW: Add server information summary**
+        $this->render_server_info_summary();
         
         // Status summary row (always visible)
         echo '<div class="kismet-notice-summary" id="kismet-notice-summary">';
@@ -226,25 +233,48 @@ class Kismet_Endpoint_Status_Notice {
                     var button = $(this);
                     var endpoint = button.data("endpoint");
                     var strategy = button.data("strategy");
+                    var strategyName = strategy.replace("_", " ");
                     
-                    if (confirm("This will attempt to switch to " + strategy.replace("_", " ") + " strategy. Continue?")) {
+                    if (confirm("This will switch to " + strategyName + " strategy and may take a moment. Continue?")) {
                         button.prop("disabled", true).text("Switching...");
                         
-                        // You could add AJAX call here to actually switch strategies
-                        // For now, just show a message and re-test
-                        alert("Strategy switching will be implemented. Re-testing endpoint...");
+                        // Get the endpoint path from the endpoint key
+                        var endpointPaths = {
+                            "ai_plugin": "/.well-known/ai-plugin.json",
+                            "mcp_servers": "/.well-known/mcp/servers.json", 
+                            "llms_txt": "/llms.txt",
+                            "ask_endpoint": "/ask",
+                            "robots_txt": "/robots.txt"
+                        };
                         
-                        // Re-test the specific endpoint
+                        var endpointPath = endpointPaths[endpoint];
+                        if (!endpointPath) {
+                            alert("Unknown endpoint: " + endpoint);
+                            button.prop("disabled", false).text("Try " + strategyName);
+                            return;
+                        }
+                        
                         $.post(ajaxurl, {
-                            action: "kismet_notice_test_endpoint",
-                            endpoint: endpoint,
-                            nonce: "' . wp_create_nonce('kismet_notice_test_endpoint') . '"
+                            action: "kismet_notice_switch_strategy",
+                            endpoint_path: endpointPath,
+                            target_strategy: strategy,
+                            nonce: "' . wp_create_nonce('kismet_notice_switch_strategy') . '"
                         }, function(response) {
                             if (response.success) {
-                                $("#kismet-notice-status-" + endpoint + " .endpoint-status").html(response.data.summary);
-                                $("#kismet-notice-detail-" + endpoint).html(response.data.detail);
+                                var endpointName = $("#kismet-notice-status-" + endpoint + " .endpoint-name").text() || endpoint;
+                                alert("✅ Success! " + endpointName + " switched to " + strategyName + " strategy.\\n\\nDetails: " + response.data.message);
+                                
+                                // Re-test all endpoints to show updated status
+                                $("#kismet-notice-test-all").click();
+                            } else {
+                                var endpointName = $("#kismet-notice-status-" + endpoint + " .endpoint-name").text() || endpoint;
+                                alert("❌ Strategy switch failed for " + endpointName + ": " + response.data);
                             }
-                            button.prop("disabled", false).text("Try Fallback");
+                            button.prop("disabled", false).text("Try " + strategyName);
+                        }).fail(function() {
+                            var endpointName = $("#kismet-notice-status-" + endpoint + " .endpoint-name").text() || endpoint;
+                            alert("🌐 Network error occurred during strategy switch for " + endpointName + ".");
+                            button.prop("disabled", false).text("Try " + strategyName);
                         });
                     }
                 });
@@ -365,7 +395,65 @@ class Kismet_Endpoint_Status_Notice {
                 color: #dba617;
                 font-weight: 600;
             }
+            /* **NEW: Server information styles for notice** */
+            .kismet-notice-server-info {
+                margin-bottom: 15px;
+                padding: 10px;
+                background: #f8f9fa;
+                border: 1px solid #e1e4e8;
+                border-radius: 4px;
+            }
+            .kismet-notice-server-info h4 {
+                margin: 0 0 10px 0;
+                font-size: 13px;
+                color: #374151;
+            }
+            .server-variables-list {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                gap: 5px;
+                font-size: 11px;
+            }
+            .server-var {
+                display: flex;
+                justify-content: space-between;
+                padding: 2px 0;
+            }
         ';
+    }
+    
+    /**
+     * **NEW: Render server information summary for the notice**
+     */
+    private function render_server_info_summary() {
+        global $kismet_ask_proxy_plugin;
+        
+        echo '<div class="kismet-notice-server-info">';
+        echo '<h4>Server Detection Variables</h4>';
+        
+        if ($kismet_ask_proxy_plugin) {
+            $server_detector = $kismet_ask_proxy_plugin->get_server_detector();
+            echo '<div class="server-variables-list">';
+            echo '<div class="server-var"><strong>Server Software:</strong> <code>' . esc_html($server_detector->server_software ?: 'null') . '</code></div>';
+            echo '<div class="server-var"><strong>Apache:</strong> ' . ($server_detector->is_apache ? '<span style="color: green;">True</span>' : '<span style="color: red;">False</span>') . '</div>';
+            echo '<div class="server-var"><strong>Nginx:</strong> ' . ($server_detector->is_nginx ? '<span style="color: green;">True</span>' : '<span style="color: red;">False</span>') . '</div>';
+            echo '<div class="server-var"><strong>IIS:</strong> ' . ($server_detector->is_iis ? '<span style="color: green;">True</span>' : '<span style="color: red;">False</span>') . '</div>';
+            echo '<div class="server-var"><strong>LiteSpeed:</strong> ' . ($server_detector->is_litespeed ? '<span style="color: green;">True</span>' : '<span style="color: red;">False</span>') . '</div>';
+            echo '<div class="server-var"><strong>Server Version:</strong> <code>' . esc_html($server_detector->server_version ?: 'null') . '</code></div>';
+            echo '<div class="server-var"><strong>Supports .htaccess:</strong> ' . ($server_detector->supports_htaccess ? '<span style="color: green;">True</span>' : '<span style="color: red;">False</span>') . '</div>';
+            echo '<div class="server-var"><strong>Supports Nginx Config:</strong> ' . ($server_detector->supports_nginx_config ? '<span style="color: green;">True</span>' : '<span style="color: red;">False</span>') . '</div>';
+            echo '<div class="server-var"><strong>Server Capabilities:</strong> ';
+            if ($server_detector->supports_htaccess) echo '<span style="color: green;">.htaccess ✓</span> ';
+            if ($server_detector->supports_nginx_config) echo '<span style="color: green;">nginx ✓</span> ';
+            echo '</div>';
+            echo '</div>';
+        } else {
+            echo '<div class="server-variables-list">';
+            echo '<div class="server-var"><strong>Server Detection:</strong> <span style="color: red;">Unavailable</span></div>';
+            echo '</div>';
+        }
+        
+        echo '</div>';
     }
     
     /**
@@ -453,13 +541,16 @@ class Kismet_Endpoint_Status_Notice {
                 $strategy_name = $this->format_strategy_name($status['current_strategy']);
                 $summary .= '<br><small style="color: #d63638;">' . esc_html($strategy_name) . ' not working</small>';
                 
-                // **SIMPLIFIED: Show next strategy button based on simple array index**
+                // **SECURE: Show next strategy link using WordPress admin actions**
                 if (isset($status['current_strategy_index'])) {
                     $next_strategy = $this->get_next_strategy($status['current_strategy_index']);
                     if ($next_strategy) {
                         $next_strategy_name = $this->format_strategy_name($next_strategy);
-                        $endpoint_key = $this->get_endpoint_key_from_status($status);
-                        $summary .= '<br><button type="button" class="button button-small try-fallback-btn" data-endpoint="' . esc_attr($endpoint_key) . '" data-strategy="' . esc_attr($next_strategy) . '" style="margin-top: 4px; font-size: 10px; padding: 2px 6px;">Try ' . esc_html($next_strategy_name) . '</button>';
+                        $endpoint_path = $this->get_endpoint_path_from_status($status);
+                        if ($endpoint_path) {
+                            $switch_url = $this->strategy_switcher->get_strategy_switch_url($endpoint_path, $next_strategy);
+                            $summary .= '<br><a href="' . esc_url($switch_url) . '" class="button button-small" style="margin-top: 4px; font-size: 10px; padding: 2px 6px;" onclick="return confirm(\'Switch to ' . esc_js($next_strategy_name) . ' strategy? This will deactivate and reactivate the plugin.\')">Try ' . esc_html($next_strategy_name) . '</a>';
+                        }
                     }
                 }
             }
@@ -478,25 +569,25 @@ class Kismet_Endpoint_Status_Notice {
     }
     
     /**
-     * **NEW: Extract endpoint key from status data for button actions**
+     * **NEW: Extract endpoint path from status data for admin actions**
      */
-    private function get_endpoint_key_from_status($status) {
-        // Map URL patterns to endpoint keys used in the dashboard
-        $url_to_key_map = array(
-            '/.well-known/ai-plugin.json' => 'ai_plugin',
-            '/.well-known/mcp/servers.json' => 'mcp_servers',
-            '/llms.txt' => 'llms_txt',
-            '/ask' => 'ask_endpoint',
-            '/robots.txt' => 'robots_txt'
+    private function get_endpoint_path_from_status($status) {
+        // Map URL patterns to endpoint paths
+        $url_to_path_map = array(
+            '/.well-known/ai-plugin.json' => '/.well-known/ai-plugin.json',
+            '/.well-known/mcp/servers.json' => '/.well-known/mcp/servers.json',
+            '/llms.txt' => '/llms.txt',
+            '/ask' => '/ask',
+            '/robots.txt' => '/robots.txt'
         );
         
-        foreach ($url_to_key_map as $url_pattern => $key) {
+        foreach ($url_to_path_map as $url_pattern => $path) {
             if (isset($status['url']) && strpos($status['url'], $url_pattern) !== false) {
-                return $key;
+                return $path;
             }
         }
         
-        return 'unknown';
+        return null;
     }
     
     /**
@@ -576,4 +667,6 @@ class Kismet_Endpoint_Status_Notice {
             )
         );
     }
+    
+    // **REMOVED: Old AJAX strategy switching handler - now using secure WordPress admin actions**
 } 

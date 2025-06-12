@@ -1,9 +1,13 @@
 <?php
 /**
- * MCP Servers Installer - Installation Logic ONLY
+ * MCP Servers Content Logic
  *
- * This class handles ONE-TIME setup during plugin activation/deactivation.
+ * This class defines the content and behavior for the MCP Servers endpoint.
+ * It handles ONE-TIME setup during plugin activation/deactivation.
  * It NEVER runs on page loads. NO init hooks.
+ * 
+ * RESPONSIBILITY: Define content for /.well-known/mcp/servers.json endpoint
+ * RUNS: Only during plugin activation/deactivation
  * 
  * @package Kismet_Ask_Proxy
  */
@@ -14,7 +18,7 @@ if (!defined('ABSPATH')) {
 
 require_once(plugin_dir_path(__FILE__) . '../shared/class-file-safety-manager.php');
 
-class Kismet_MCP_Servers_Installer {
+class Kismet_MCP_Servers_Content_Logic {
     
     /**
      * Plugin activation - runs ONCE when plugin is activated

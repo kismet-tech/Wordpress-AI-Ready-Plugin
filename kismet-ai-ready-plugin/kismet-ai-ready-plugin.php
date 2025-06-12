@@ -21,64 +21,30 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-// Basic plugin loading detection
-error_log('KISMET PLUGIN: Main plugin file loaded - ' . __FILE__);
-
 // Define plugin constants
 define('KISMET_PLUGIN_PATH', plugin_dir_path(__FILE__));
 define('KISMET_PLUGIN_URL', plugin_dir_url(__FILE__));
 
-// Include INSTALLER classes (run ONCE during activation/deactivation)
-error_log('KISMET PLUGIN: Loading installer classes...');
+// Include required classes
 require_once KISMET_PLUGIN_PATH . 'includes/installers/class-ai-plugin-installer.php';
-error_log('KISMET PLUGIN: Loaded class-ai-plugin-installer.php');
-require_once KISMET_PLUGIN_PATH . 'includes/installers/class-mcp-servers-installer.php';
-error_log('KISMET PLUGIN: Loaded class-mcp-servers-installer.php');
-require_once KISMET_PLUGIN_PATH . 'includes/installers/class-robots-installer.php';
-error_log('KISMET PLUGIN: Loaded class-robots-installer.php');
-require_once KISMET_PLUGIN_PATH . 'includes/installers/class-llms-installer.php';
-error_log('KISMET PLUGIN: Loaded class-llms-installer.php');
-require_once KISMET_PLUGIN_PATH . 'includes/installers/class-ask-installer.php';
-error_log('KISMET PLUGIN: Loaded class-ask-installer.php');
-
-// Include HANDLER classes (only /ask needs runtime handling - others are static files)
-error_log('KISMET PLUGIN: Loading handler classes...');
-require_once KISMET_PLUGIN_PATH . 'includes/handlers/class-ask-handler.php';
-error_log('KISMET PLUGIN: Loaded class-ask-handler.php');
-
-// Include SHARED classes 
-error_log('KISMET PLUGIN: Loading shared classes...');
+require_once KISMET_PLUGIN_PATH . 'includes/endpoint-content-logic/class-mcp-servers-content-logic.php';
+require_once KISMET_PLUGIN_PATH . 'includes/endpoint-content-logic/class-robots-content-logic.php';
+require_once KISMET_PLUGIN_PATH . 'includes/endpoint-content-logic/class-llms-content-logic.php';
+require_once KISMET_PLUGIN_PATH . 'includes/endpoint-content-logic/class-ask-content-logic.php';
 require_once KISMET_PLUGIN_PATH . 'includes/shared/class-file-safety-manager.php';
-error_log('KISMET PLUGIN: Loaded class-file-safety-manager.php');
 require_once KISMET_PLUGIN_PATH . 'includes/shared/class-route-tester.php';
-error_log('KISMET PLUGIN: Loaded class-route-tester.php');
 require_once KISMET_PLUGIN_PATH . 'includes/shared/class-endpoint-manager.php';
-error_log('KISMET PLUGIN: Loaded class-endpoint-manager.php');
-
-// Include admin classes (only loaded in admin context)
-error_log('KISMET PLUGIN: Loading admin classes...');
+require_once KISMET_PLUGIN_PATH . 'includes/strategies/strategies.php';
+require_once KISMET_PLUGIN_PATH . 'includes/strategies/class-ai-plugin-strategies.php';
+require_once KISMET_PLUGIN_PATH . 'includes/strategies/class-mcp-servers-strategies.php';
+require_once KISMET_PLUGIN_PATH . 'includes/strategies/class-robots-strategies.php';
+require_once KISMET_PLUGIN_PATH . 'includes/strategies/class-ask-strategies.php';
+require_once KISMET_PLUGIN_PATH . 'includes/installers/class-strategy-coordinator.php';
 require_once KISMET_PLUGIN_PATH . 'includes/admin/class-ai-plugin-admin.php';
-error_log('KISMET PLUGIN: Loaded class-ai-plugin-admin.php');
 require_once KISMET_PLUGIN_PATH . 'includes/admin/class-endpoint-status-dashboard.php';
-error_log('KISMET PLUGIN: Loaded class-endpoint-status-dashboard.php');
-
-// Include plugin page notice classes
-error_log('KISMET PLUGIN: Loading plugin page notice classes...');
 require_once KISMET_PLUGIN_PATH . 'includes/plugin-page-notice/class-endpoint-status-notice.php';
-error_log('KISMET PLUGIN: Loaded class-endpoint-status-notice.php');
-
-// Include modular environment detection system
-error_log('KISMET PLUGIN: Loading environment classes...');
-require_once KISMET_PLUGIN_PATH . 'includes/environment/class-system-checker.php';
-error_log('KISMET PLUGIN: Loaded class-system-checker.php');
-require_once KISMET_PLUGIN_PATH . 'includes/environment/class-plugin-detector.php';
-error_log('KISMET PLUGIN: Loaded class-plugin-detector.php');
 require_once KISMET_PLUGIN_PATH . 'includes/environment/class-endpoint-tester.php';
-error_log('KISMET PLUGIN: Loaded class-endpoint-tester.php');
-require_once KISMET_PLUGIN_PATH . 'includes/environment/class-report-generator.php';
-error_log('KISMET PLUGIN: Loaded class-report-generator.php');
-require_once KISMET_PLUGIN_PATH . 'includes/environment/class-environment-detector-v2.php';
-error_log('KISMET PLUGIN: Loaded class-environment-detector-v2.php');
+require_once KISMET_PLUGIN_PATH . 'includes/environment/class-server-detector.php';
 
 /**
  * Main plugin class - Clean Architecture
@@ -89,29 +55,27 @@ error_log('KISMET PLUGIN: Loaded class-environment-detector-v2.php');
  */
 class Kismet_Ask_Proxy_Plugin {
     
-    private $ask_handler;
     private $ai_plugin_admin;
     private $endpoint_manager;
     private $endpoint_status_notice;
+    private $server_detector;
     
     public function __construct() {
-        error_log('KISMET PLUGIN: Constructor starting');
+        // Initialize server detector
+        $this->server_detector = new Kismet_Server_Detector();
+        $this->server_detector->detect_server_environment();
         
         // Initialize endpoint manager for intelligent endpoint handling
         $this->endpoint_manager = Kismet_Endpoint_Manager::get_instance();
-        error_log('KISMET PLUGIN: Endpoint manager initialized');
         
-        // Initialize only the /ask handler (others managed by endpoint manager)
-        $this->ask_handler = new Kismet_Ask_Handler();
-        error_log('KISMET PLUGIN: Ask handler initialized');
+        // Ask handler hooks are managed by the Strategy Coordinator building blocks
+        // The building blocks set up persistent hooks during activation
         
         // Initialize admin interface (only loads in admin context)
         $this->ai_plugin_admin = new Kismet_AI_Plugin_Admin();
-        error_log('KISMET PLUGIN: Admin interface initialized');
         
         // Initialize endpoint status notice (shows across admin pages)
         $this->endpoint_status_notice = new Kismet_Endpoint_Status_Notice();
-        error_log('KISMET PLUGIN: Endpoint status notice initialized');
     
         // Add endpoint manager hooks
         add_filter('query_vars', array($this->endpoint_manager, 'add_query_vars'));
@@ -119,8 +83,6 @@ class Kismet_Ask_Proxy_Plugin {
         
         // Add a "Settings" link to the plugin row
         add_filter('plugin_action_links_' . plugin_basename(__FILE__), array($this, 'add_settings_link'));
-        
-        error_log('KISMET PLUGIN: Constructor completed successfully');
     }
     
     /**
@@ -130,6 +92,196 @@ class Kismet_Ask_Proxy_Plugin {
         $settings_link = '<a href="options-general.php?page=kismet-ai-plugin-settings">Settings</a>';
         array_unshift($links, $settings_link);
         return $links;
+    }
+    
+    /**
+     * Get server detector instance
+     * 
+     * @return Kismet_Server_Detector Server detection instance
+     */
+    public function get_server_detector() {
+        return $this->server_detector;
+    }
+    
+    /**
+     * Legacy method for backward compatibility
+     * @deprecated Use get_server_detector() instead
+     */
+    public function detect_server_type() {
+        // Legacy method - delegate to server detector
+        if (!$this->server_detector) {
+            $this->server_detector = new Kismet_Server_Detector();
+            $this->server_detector->detect_server_environment();
+        }
+    }
+
+
+    
+    /**
+     * Get endpoint-specific strategy manager for a given endpoint
+     * 
+     * Returns the appropriate strategy class that understands the unique requirements
+     * and optimal server configurations for each specific endpoint.
+     * 
+     * @param string $endpoint_path The endpoint path (e.g., '/.well-known/ai-plugin.json')
+     * @return object|null Strategy manager instance or null if endpoint not recognized
+     */
+    public function get_endpoint_strategy_manager($endpoint_path) {
+        switch ($endpoint_path) {
+            case '/.well-known/ai-plugin.json':
+                return new Kismet_AI_Plugin_Strategies($this);
+                
+            case '/.well-known/mcp/servers.json':
+                return new Kismet_MCP_Servers_Strategies($this);
+                
+            case '/robots.txt':
+                return new Kismet_Robots_Strategies($this);
+                
+            case '/ask':
+                return new Kismet_Ask_Strategies($this);
+                
+            default:
+                error_log("KISMET STRATEGY: No strategy manager found for endpoint: {$endpoint_path}");
+                return null;
+        }
+    }
+    
+    /**
+     * Get ordered list of strategies for a specific endpoint
+     * 
+     * This method delegates to the endpoint-specific strategy manager.
+     * Each endpoint type has its own class that understands server requirements.
+     * 
+     * @param string $endpoint_path The endpoint path
+     * @return array Ordered array of strategies to try, from most preferred to fallback
+     */
+    public function get_endpoint_strategies($endpoint_path) {
+        $strategy_manager = $this->get_endpoint_strategy_manager($endpoint_path);
+        
+        if ($strategy_manager && method_exists($strategy_manager, 'get_ordered_strategies')) {
+            return $strategy_manager->get_ordered_strategies();
+        }
+        
+        // Fallback for unrecognized endpoints
+        error_log("KISMET STRATEGY: Using fallback strategies for unknown endpoint: {$endpoint_path}");
+        return ['wordpress_rewrite', 'manual_static_file'];
+    }
+    
+    /**
+     * Execute strategies in order until one succeeds
+     * 
+     * This is the main method installers should use. It tries each strategy
+     * for the endpoint in the optimal order based on server capabilities.
+     * 
+     * @param string $endpoint_path The endpoint path (e.g., '/.well-known/ai-plugin.json')
+     * @param array $endpoint_data Data needed to create the endpoint (content, etc.)
+     * @param callable $strategy_executor Function that attempts each strategy
+     * @return array Result with success status and details
+     */
+    public function execute_endpoint_strategies($endpoint_path, $endpoint_data, $strategy_executor) {
+        $strategies = $this->get_endpoint_strategies($endpoint_path);
+        $results = array();
+        
+        error_log("KISMET STRATEGY: Trying strategies for {$endpoint_path}: " . implode(', ', $strategies));
+        
+        foreach ($strategies as $strategy) {
+            error_log("KISMET STRATEGY: Attempting strategy: {$strategy}");
+            
+            try {
+                // Call the provided strategy executor function
+                $result = call_user_func($strategy_executor, $strategy, $endpoint_path, $endpoint_data, $this);
+                
+                if ($result && isset($result['success']) && $result['success']) {
+                    error_log("KISMET STRATEGY: Strategy {$strategy} succeeded for {$endpoint_path}");
+                    return array(
+                        'success' => true,
+                        'strategy_used' => $strategy,
+                        'details' => $result,
+                        'attempted_strategies' => array_keys($results),
+                        'server_info' => $this->get_server_info()
+                    );
+                } else {
+                    $error_msg = isset($result['error']) ? $result['error'] : 'Strategy failed without specific error';
+                    error_log("KISMET STRATEGY: Strategy {$strategy} failed: {$error_msg}");
+                    $results[$strategy] = $result;
+                }
+                
+            } catch (Exception $e) {
+                error_log("KISMET STRATEGY: Strategy {$strategy} threw exception: " . $e->getMessage());
+                $results[$strategy] = array(
+                    'success' => false,
+                    'error' => $e->getMessage()
+                );
+            }
+        }
+        
+        // All strategies failed
+        error_log("KISMET STRATEGY: All strategies failed for {$endpoint_path}");
+        return array(
+            'success' => false,
+            'error' => 'All endpoint strategies failed',
+            'attempted_strategies' => $results,
+            'server_info' => $this->get_server_info(),
+            'recommendations' => $this->get_failure_recommendations($endpoint_path)
+        );
+    }
+    
+    /**
+     * Get recommendations when all strategies fail
+     * 
+     * @param string $endpoint_path The endpoint that failed
+     * @return array Recommendations for manual configuration
+     */
+    private function get_failure_recommendations($endpoint_path) {
+        $recommendations = array();
+        
+        if ($this->server_detector->is_nginx) {
+            $recommendations[] = 'Add nginx configuration to serve static files from WordPress root';
+            $recommendations[] = 'Ensure nginx has read permissions to WordPress directory';
+        } elseif ($this->server_detector->is_apache || $this->server_detector->is_litespeed) {
+            $recommendations[] = 'Check if .htaccess files are enabled (AllowOverride directive)';
+            $recommendations[] = 'Verify WordPress root directory is writable';
+        } elseif ($this->server_detector->is_iis) {
+            $recommendations[] = 'Check IIS URL Rewrite module installation';
+            $recommendations[] = 'Verify web.config file permissions';
+        }
+        
+        $recommendations[] = 'Ensure WordPress permalinks are enabled';
+        $recommendations[] = 'Check server error logs for specific issues';
+        
+        return $recommendations;
+    }
+    
+
+    
+    /**
+     * Get single recommended strategy (for backward compatibility)
+     * 
+     * @param string $endpoint_path The endpoint path
+     * @return string Single recommended strategy
+     * @deprecated Use get_endpoint_strategies() instead for better fallback handling
+     */
+    public function get_recommended_strategy($endpoint_path) {
+        $strategies = $this->get_endpoint_strategies($endpoint_path);
+        return $strategies[0]; // Return the most preferred strategy
+    }
+    
+    /**
+     * Get human-readable server information
+     * 
+     * @return array Server information for display in admin interface
+     */
+    public function get_server_info() {
+        return $this->server_detector->get_server_info();
+    }
+    
+    /**
+     * Get simple server type name for logging
+     * 
+     * @return string Simple server type name
+     */
+    public function get_server_type_name() {
+        return $this->server_detector->get_server_type_name();
     }
 }
 
@@ -168,15 +320,7 @@ function kismet_display_environment_notices() {
         delete_option('kismet_activation_warning');
     }
     
-    // Show environment report on plugin settings page
-    $screen = get_current_screen();
-    if ($screen && strpos($screen->id, 'kismet-ai-plugin-settings') !== false) {
-        $environment_report = get_option('kismet_environment_report');
-        if ($environment_report) {
-            $environment_detector = new Kismet_Environment_Detector_V2();
-            echo $environment_detector->get_admin_report_html();
-        }
-    }
+    // Environment report removed - using simplified server detection now
 }
 
 // === ACTIVATION & DEACTIVATION HOOKS ===
@@ -184,50 +328,31 @@ function kismet_display_environment_notices() {
 /**
  * Plugin activation hook - ALL database operations happen HERE
  */
-error_log('KISMET PLUGIN: Registering activation hook for file: ' . __FILE__);
 register_activation_hook(__FILE__, function() {
     error_log('KISMET ACTIVATION: Starting plugin activation');
-    error_log('KISMET ACTIVATION: Activation hook triggered for file: ' . __FILE__);
     
     try {
-        // Test if we can get this far
-        error_log('KISMET ACTIVATION: About to create environment detector');
-        
-        // Run environment check
-        $environment_detector = new Kismet_Environment_Detector_V2();
-        error_log('KISMET ACTIVATION: Environment detector created successfully');
-        $compatibility_report = $environment_detector->run_full_environment_check();
-        
-        // Store the compatibility report for admin display
-        update_option('kismet_environment_report', $compatibility_report);
-        
-        if (!$environment_detector->is_environment_compatible()) {
-            error_log('KISMET ACTIVATION WARNING: Environment compatibility issues detected');
-            add_option('kismet_activation_warning', 'Environment compatibility issues detected during activation');
+        // Simple compatibility check
+        if (version_compare(PHP_VERSION, '7.4.0', '<')) {
+            error_log('KISMET ACTIVATION WARNING: PHP version ' . PHP_VERSION . ' is below recommended 7.4.0');
+            add_option('kismet_activation_warning', 'PHP version ' . PHP_VERSION . ' is below recommended 7.4.0');
         }
         
-        // Run ALL installers - they do ALL database operations ONCE
-        error_log('KISMET ACTIVATION: Running installers...');
-        
-        error_log('KISMET ACTIVATION: About to run AI Plugin Installer');
+        // Run ALL content logic activations
         Kismet_AI_Plugin_Installer::activate();
-        error_log('KISMET ACTIVATION: AI Plugin Installer completed');
+        Kismet_MCP_Servers_Content_Logic::activate();
+        Kismet_Robots_Content_Logic::activate();
+        Kismet_LLMS_Content_Logic::activate();
         
-        error_log('KISMET ACTIVATION: About to run MCP Servers Installer');
-        Kismet_MCP_Servers_Installer::activate();
-        error_log('KISMET ACTIVATION: MCP Servers Installer completed');
+        // Register /ask endpoint through new Strategy Coordinator system
+        global $kismet_ask_proxy_plugin;
+        $strategy_coordinator = new Kismet_Strategy_Coordinator($kismet_ask_proxy_plugin);
+        $ask_result = $strategy_coordinator->install_endpoint('/ask', array(
+            'content_type' => 'text/html',
+            'methods' => array('GET', 'POST', 'OPTIONS')
+        ), 'ask');
         
-        error_log('KISMET ACTIVATION: About to run Robots Installer');
-        Kismet_Robots_Installer::activate();
-        error_log('KISMET ACTIVATION: Robots Installer completed');
-        
-        error_log('KISMET ACTIVATION: About to run LLMS Installer');
-        Kismet_LLMS_Installer::activate();
-        error_log('KISMET ACTIVATION: LLMS Installer completed');
-        
-        error_log('KISMET ACTIVATION: About to run Ask Installer');
-        Kismet_Ask_Installer::activate();
-        error_log('KISMET ACTIVATION: Ask Installer completed');
+        error_log('KISMET ACTIVATION: /ask endpoint registration result: ' . print_r($ask_result, true));
         
         // Flush rewrite rules ONCE
         flush_rewrite_rules();
@@ -247,20 +372,23 @@ register_activation_hook(__FILE__, function() {
  * Plugin deactivation hook
  */
 register_deactivation_hook(__FILE__, function() {
-    error_log('KISMET DEACTIVATION: Starting plugin deactivation');
-    
     try {
         // Run ALL deactivation cleanups
         Kismet_AI_Plugin_Installer::deactivate();
-        Kismet_MCP_Servers_Installer::deactivate();
-        Kismet_Robots_Installer::deactivate();
-        Kismet_LLMS_Installer::deactivate();
-        Kismet_Ask_Installer::deactivate();
+        Kismet_MCP_Servers_Content_Logic::deactivate();
+        Kismet_Robots_Content_Logic::deactivate();
+        Kismet_LLMS_Content_Logic::deactivate();
+        
+        // Deactivate /ask endpoint through Strategy Coordinator
+        global $kismet_ask_proxy_plugin;
+        if ($kismet_ask_proxy_plugin) {
+            $strategy_coordinator = new Kismet_Strategy_Coordinator($kismet_ask_proxy_plugin);
+            $cleanup_result = $strategy_coordinator->cleanup_endpoint_by_type('/ask', 'ask');
+            error_log('KISMET DEACTIVATION: /ask endpoint cleanup result: ' . print_r($cleanup_result, true));
+        }
         
         // Flush rewrite rules
         flush_rewrite_rules();
-        
-        error_log('KISMET DEACTIVATION: Plugin deactivation completed successfully');
         
     } catch (Exception $e) {
         error_log('KISMET DEACTIVATION ERROR: ' . $e->getMessage());
@@ -277,47 +405,28 @@ register_uninstall_hook(__FILE__, 'kismet_plugin_uninstall');
  */
 function kismet_manual_activation() {
     error_log('KISMET MANUAL ACTIVATION: Starting manual activation');
-    error_log('KISMET MANUAL ACTIVATION: Function called successfully');
     
     try {
-        // Test if we can get this far
-        error_log('KISMET MANUAL ACTIVATION: About to create environment detector');
-        
-        // Run environment check
-        $environment_detector = new Kismet_Environment_Detector_V2();
-        error_log('KISMET MANUAL ACTIVATION: Environment detector created successfully');
-        $compatibility_report = $environment_detector->run_full_environment_check();
-        
-        // Store the compatibility report for admin display
-        update_option('kismet_environment_report', $compatibility_report);
-        
-        if (!$environment_detector->is_environment_compatible()) {
-            error_log('KISMET MANUAL ACTIVATION WARNING: Environment compatibility issues detected');
-            add_option('kismet_activation_warning', 'Environment compatibility issues detected during activation');
+        // Simple compatibility check
+        if (version_compare(PHP_VERSION, '7.4.0', '<')) {
+            add_option('kismet_activation_warning', 'PHP version ' . PHP_VERSION . ' is below recommended 7.4.0');
         }
         
-        // Run ALL installers - they do ALL database operations ONCE
-        error_log('KISMET MANUAL ACTIVATION: Running installers...');
-        
-        error_log('KISMET MANUAL ACTIVATION: About to run AI Plugin Installer');
+        // Run ALL content logic activations
         Kismet_AI_Plugin_Installer::activate();
-        error_log('KISMET MANUAL ACTIVATION: AI Plugin Installer completed');
+        Kismet_MCP_Servers_Content_Logic::activate();
+        Kismet_Robots_Content_Logic::activate();
+        Kismet_LLMS_Content_Logic::activate();
         
-        error_log('KISMET MANUAL ACTIVATION: About to run MCP Servers Installer');
-        Kismet_MCP_Servers_Installer::activate();
-        error_log('KISMET MANUAL ACTIVATION: MCP Servers Installer completed');
+        // Register /ask endpoint through new Strategy Coordinator system
+        global $kismet_ask_proxy_plugin;
+        $strategy_coordinator = new Kismet_Strategy_Coordinator($kismet_ask_proxy_plugin);
+        $ask_result = $strategy_coordinator->install_endpoint('/ask', array(
+            'content_type' => 'text/html',
+            'methods' => array('GET', 'POST', 'OPTIONS')
+        ), 'ask');
         
-        error_log('KISMET MANUAL ACTIVATION: About to run Robots Installer');
-        Kismet_Robots_Installer::activate();
-        error_log('KISMET MANUAL ACTIVATION: Robots Installer completed');
-        
-        error_log('KISMET MANUAL ACTIVATION: About to run LLMS Installer');
-        Kismet_LLMS_Installer::activate();
-        error_log('KISMET MANUAL ACTIVATION: LLMS Installer completed');
-        
-        error_log('KISMET MANUAL ACTIVATION: About to run Ask Installer');
-        Kismet_Ask_Installer::activate();
-        error_log('KISMET MANUAL ACTIVATION: Ask Installer completed');
+        error_log('KISMET MANUAL ACTIVATION: /ask endpoint registration result: ' . print_r($ask_result, true));
         
         // Flush rewrite rules ONCE
         flush_rewrite_rules();
@@ -339,13 +448,11 @@ function kismet_manual_activation() {
  */
 function kismet_plugin_uninstall() {
     // Complete database cleanup
-    Kismet_Ask_Installer::uninstall();
+    Kismet_Ask_Content_Logic::uninstall();
+    Kismet_Robots_Content_Logic::uninstall();
     
-    // Remove all options
-    delete_option('kismet_environment_report');
+    // Remove all options  
     delete_option('kismet_activation_warning');
-    
-    error_log('KISMET UNINSTALL: Plugin completely removed');
 }
 
 /**

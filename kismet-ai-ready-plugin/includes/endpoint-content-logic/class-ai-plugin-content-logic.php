@@ -1,11 +1,12 @@
 <?php
 /**
- * AI Plugin Installer - Installation Logic ONLY
+ * AI Plugin Content Logic
  *
- * This class handles ONE-TIME setup during plugin activation/deactivation.
+ * This class defines the content and behavior for the AI Plugin endpoint.
+ * It handles ONE-TIME setup during plugin activation/deactivation.
  * It NEVER runs on page loads. NO init hooks.
  * 
- * RESPONSIBILITY: Create static files, set up directories, configure settings
+ * RESPONSIBILITY: Define content for /.well-known/ai-plugin.json endpoint
  * RUNS: Only during plugin activation/deactivation
  * 
  * @package Kismet_Ask_Proxy
@@ -17,7 +18,7 @@ if (!defined('ABSPATH')) {
 
 require_once(plugin_dir_path(__FILE__) . '../shared/class-file-safety-manager.php');
 
-class Kismet_AI_Plugin_Installer {
+class Kismet_AI_Plugin_Content_Logic {
     
     /**
      * Plugin activation - runs ONCE when plugin is activated
@@ -35,13 +36,13 @@ class Kismet_AI_Plugin_Installer {
                 'content_type' => 'application/json'
             ));
             
-            // Log the strategy used
-            $strategy = $test_results['strategy_used'] ?? 'unknown';
-            error_log("KISMET INSTALLER: AI Plugin endpoint using strategy: " . $strategy);
+            // Log the approach used
+            $approach = $test_results['recommended_approach'] ?? 'unknown';
+            error_log("KISMET INSTALLER: AI Plugin endpoint using approach: " . $approach);
             
             // Set activation timestamp
             update_option('kismet_ai_plugin_activated', current_time('timestamp'));
-            update_option('kismet_ai_plugin_strategy', $strategy);
+            update_option('kismet_ai_plugin_approach', $approach);
             
             error_log("KISMET INSTALLER: AI Plugin activation completed successfully");
             
@@ -66,7 +67,7 @@ class Kismet_AI_Plugin_Installer {
             delete_option('kismet_ai_plugin_activated');
             delete_option('kismet_ai_plugin_static_generated');
             delete_option('kismet_ai_plugin_settings_updated');
-            delete_option('kismet_ai_plugin_strategy');
+            delete_option('kismet_ai_plugin_approach');
             
             error_log("KISMET INSTALLER: AI Plugin deactivation completed");
             

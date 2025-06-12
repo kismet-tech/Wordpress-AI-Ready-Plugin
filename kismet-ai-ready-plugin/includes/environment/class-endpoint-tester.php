@@ -2,7 +2,7 @@
 /**
  * Kismet Endpoint Tester - Real HTTP endpoint testing
  *
- * Tests actual endpoints with HTTP requests to provide real status information
+ * Simple, focused HTTP testing for endpoints. No strategy tracking - just pure testing.
  */
 
 // Prevent direct access
@@ -57,6 +57,13 @@ class Kismet_Endpoint_Tester {
             } elseif (strpos($url, '/ask') !== false) {
                 // For /ask endpoint, any 200 response is good (it's an API endpoint)
                 $content_info = 'Ask endpoint responding';
+            } elseif (strpos($url, 'robots.txt') !== false) {
+                $content_valid = strlen(trim($response_body)) > 0;
+                $content_info = $content_valid ? 'Robots.txt content found' : 'Empty robots.txt';
+            } elseif (strpos($url, 'servers.json') !== false) {
+                $json_data = json_decode($response_body, true);
+                $content_valid = is_array($json_data);
+                $content_info = $content_valid ? 'Valid MCP servers JSON' : 'Invalid JSON format';
             }
             
             return array(
@@ -91,6 +98,7 @@ class Kismet_Endpoint_Tester {
     
     /**
      * Get simple endpoint status summary with REAL endpoint testing
+     * Pure HTTP testing - no strategy tracking complexity
      * 
      * @return array Simple status for each endpoint with real HTTP results
      */
@@ -98,15 +106,9 @@ class Kismet_Endpoint_Tester {
         $endpoints = array();
         $site_url = get_site_url();
         
-        // **NEW: Get strategy information from endpoint manager**
-        require_once(plugin_dir_path(__FILE__) . '../shared/class-endpoint-manager.php');
-        $endpoint_manager = Kismet_Endpoint_Manager::get_instance();
-        $all_strategies = $endpoint_manager->get_all_endpoint_strategies();
-        
         // Test AI Plugin endpoint (REAL HTTP test)
         $ai_plugin_url = $site_url . '/.well-known/ai-plugin.json';
         $ai_plugin_test = $this->test_real_endpoint($ai_plugin_url);
-        $ai_plugin_strategy = $all_strategies['/.well-known/ai-plugin.json'] ?? array();
         $endpoints['ai_plugin'] = array(
             'name' => 'AI Plugin Discovery',
             'url' => $ai_plugin_url,
@@ -115,18 +117,12 @@ class Kismet_Endpoint_Tester {
             'what_we_did' => $ai_plugin_test['what_exists'],
             'is_working' => $ai_plugin_test['is_working'],
             'status' => $ai_plugin_test['status_icon'],
-            'http_code' => $ai_plugin_test['http_code'],
-            // **SIMPLIFIED: Strategy information**
-            'current_strategy' => $ai_plugin_strategy['current_strategy'] ?? 'unknown',
-            'current_strategy_index' => $ai_plugin_strategy['current_strategy_index'] ?? 0,
-            'strategy_timestamp' => $ai_plugin_strategy['timestamp'] ?? null,
-            'both_strategies_work' => $ai_plugin_strategy['both_strategies_work'] ?? false
+            'http_code' => $ai_plugin_test['http_code']
         );
         
         // Test LLMS.txt endpoint (REAL HTTP test)
         $llms_url = $site_url . '/llms.txt';
         $llms_test = $this->test_real_endpoint($llms_url);
-        $llms_strategy = $all_strategies['/llms.txt'] ?? array();
         $endpoints['llms_txt'] = array(
             'name' => 'LLMS.txt Policy File',
             'url' => $llms_url,
@@ -135,18 +131,12 @@ class Kismet_Endpoint_Tester {
             'what_we_did' => $llms_test['what_exists'],
             'is_working' => $llms_test['is_working'],
             'status' => $llms_test['status_icon'],
-            'http_code' => $llms_test['http_code'],
-            // **SIMPLIFIED: Strategy information**
-            'current_strategy' => $llms_strategy['current_strategy'] ?? 'unknown',
-            'current_strategy_index' => $llms_strategy['current_strategy_index'] ?? 0,
-            'strategy_timestamp' => $llms_strategy['timestamp'] ?? null,
-            'both_strategies_work' => $llms_strategy['both_strategies_work'] ?? false
+            'http_code' => $llms_test['http_code']
         );
         
         // Test Ask endpoint (REAL HTTP test)
         $ask_url = $site_url . '/ask';
         $ask_test = $this->test_real_endpoint($ask_url);
-        $ask_strategy = $all_strategies['/ask'] ?? array();
         $endpoints['ask_endpoint'] = array(
             'name' => 'Ask Endpoint',
             'url' => $ask_url,
@@ -155,18 +145,12 @@ class Kismet_Endpoint_Tester {
             'what_we_did' => $ask_test['what_exists'],
             'is_working' => $ask_test['is_working'],
             'status' => $ask_test['status_icon'],
-            'http_code' => $ask_test['http_code'],
-            // **SIMPLIFIED: Strategy information**
-            'current_strategy' => $ask_strategy['current_strategy'] ?? 'unknown',
-            'current_strategy_index' => $ask_strategy['current_strategy_index'] ?? 0,
-            'strategy_timestamp' => $ask_strategy['timestamp'] ?? null,
-            'both_strategies_work' => $ask_strategy['both_strategies_work'] ?? false
+            'http_code' => $ask_test['http_code']
         );
         
         // Test MCP Servers endpoint (REAL HTTP test)
         $mcp_url = $site_url . '/.well-known/mcp/servers.json';
         $mcp_test = $this->test_real_endpoint($mcp_url);
-        $mcp_strategy = $all_strategies['/.well-known/mcp/servers.json'] ?? array();
         $endpoints['mcp_servers'] = array(
             'name' => 'MCP Servers',
             'url' => $mcp_url,
@@ -175,18 +159,12 @@ class Kismet_Endpoint_Tester {
             'what_we_did' => $mcp_test['what_exists'],
             'is_working' => $mcp_test['is_working'],
             'status' => $mcp_test['status_icon'],
-            'http_code' => $mcp_test['http_code'],
-            // **SIMPLIFIED: Strategy information**
-            'current_strategy' => $mcp_strategy['current_strategy'] ?? 'unknown',
-            'current_strategy_index' => $mcp_strategy['current_strategy_index'] ?? 0,
-            'strategy_timestamp' => $mcp_strategy['timestamp'] ?? null,
-            'both_strategies_work' => $mcp_strategy['both_strategies_work'] ?? false
+            'http_code' => $mcp_test['http_code']
         );
         
         // Test Robots.txt endpoint (REAL HTTP test)
         $robots_url = $site_url . '/robots.txt';
         $robots_test = $this->test_real_endpoint($robots_url);
-        $robots_strategy = $all_strategies['/robots.txt'] ?? array();
         $endpoints['robots_txt'] = array(
             'name' => 'Robots.txt Enhancement',
             'url' => $robots_url,
@@ -195,12 +173,7 @@ class Kismet_Endpoint_Tester {
             'what_we_did' => $robots_test['what_exists'],
             'is_working' => $robots_test['is_working'],
             'status' => $robots_test['status_icon'],
-            'http_code' => $robots_test['http_code'],
-            // **SIMPLIFIED: Strategy information**
-            'current_strategy' => $robots_strategy['current_strategy'] ?? 'unknown',
-            'current_strategy_index' => $robots_strategy['current_strategy_index'] ?? 0,
-            'strategy_timestamp' => $robots_strategy['timestamp'] ?? null,
-            'both_strategies_work' => $robots_strategy['both_strategies_work'] ?? false
+            'http_code' => $robots_test['http_code']
         );
         
         return $endpoints;

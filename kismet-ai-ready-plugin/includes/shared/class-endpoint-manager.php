@@ -2,8 +2,23 @@
 /**
  * Kismet Endpoint Manager
  * 
- * Centralized endpoint management with automatic route testing and implementation.
- * Handles both static file creation and WordPress rewrite rules based on environment.
+ * Manages endpoint registration and strategy selection for AI plugin endpoints.
+ * Uses the new Kismet_Strategy_Registry system for proper strategy implementation.
+ * 
+ * **STRATEGY SWITCHING ARCHITECTURE:**
+ * 
+ * Uses secure WordPress admin action approach (class-strategy-switcher.php):
+ * 1. User clicks "Try [Strategy]" link → Triggers WordPress admin action
+ * 2. Admin action stores user preference in database (kismet_strategy_preference_*)
+ * 3. Admin action deactivates plugin → Cleans up old implementation properly
+ * 4. Admin action reactivates plugin → determine_best_approach() reads preferences and implements
+ * 5. User sees success/error message and updated endpoint status
+ * 
+ * This approach is:
+ * - ✅ Secure (no AJAX filesystem manipulation)
+ * - ✅ Reliable (uses WordPress plugin lifecycle)
+ * - ✅ Clean (leverages existing activation/deactivation hooks)
+ * - ✅ Simple (preference storage + plugin lifecycle = strategy switching)
  * 
  * @package Kismet_Ask_Proxy
  */
@@ -13,6 +28,7 @@ if (!defined('ABSPATH')) {
 }
 
 require_once(plugin_dir_path(__FILE__) . '../shared/class-route-tester.php');
+require_once(plugin_dir_path(__FILE__) . '../strategies/strategies.php');
 
 class Kismet_Endpoint_Manager {
     
@@ -40,7 +56,7 @@ class Kismet_Endpoint_Manager {
     }
     
     /**
-     * Register an endpoint with automatic route testing and implementation
+     * Register an endpoint with strategy-based implementation
      * 
      * @param array $config Configuration array with:
      *   - path: URL path (e.g., '/.well-known/ai-plugin.json')
@@ -52,118 +68,98 @@ class Kismet_Endpoint_Manager {
         $path = $config['path'];
         $content_generator = $config['content_generator'];
         
-        // Generate content for testing
-        $test_content = call_user_func($content_generator);
-        
         error_log("KISMET ENDPOINT: Registering endpoint: " . $path);
         
-        // Wrap route testing in try-catch block
         try {
-            // Test which approach works in this environment
-            $test_results = $this->route_tester->determine_serving_method($path, $test_content);
+            // Get strategy from the main plugin's server detection system
+            global $kismet_ask_proxy_plugin;
             
-            // **SIMPLIFIED: Use simple strategy selection**
-            $approach_result = $this->determine_best_approach($path, $test_results);
-            $approach = $approach_result['strategy'];
-            $strategy_index = $approach_result['index'];
-            
-            if (!$approach) {
-                throw new Exception("No working strategy found for endpoint: $path");
+            if (!$kismet_ask_proxy_plugin) {
+                throw new Exception("Main plugin instance not available for strategy selection");
             }
             
-            error_log("KISMET ENDPOINT: Using strategy: " . $approach . " (index $strategy_index) for " . $path);
+            // Get ordered strategies for this endpoint from the main plugin
+            $strategies = $kismet_ask_proxy_plugin->get_endpoint_strategies($path);
             
-            if ($approach === 'physical_file') {
-                $this->create_static_file($path, $test_content);
-            } else {
-                $this->register_rewrite_endpoint($path, $config);
+            error_log("KISMET ENDPOINT: Got " . count($strategies) . " strategies for " . $path);
+            
+            // Try each strategy until one succeeds
+            $success = false;
+            $last_error = '';
+            
+            foreach ($strategies as $strategy) {
+                error_log("KISMET ENDPOINT: Trying strategy: " . $strategy . " for " . $path);
+                
+                $result = Kismet_Strategy_Registry::execute_strategy(
+                    $strategy,
+                    $path,
+                    array('content_generator' => $content_generator),
+                    $kismet_ask_proxy_plugin
+                );
+                
+                if ($result['success']) {
+                    error_log("KISMET ENDPOINT: Strategy " . $strategy . " succeeded for " . $path);
+                    
+                    // Store successful strategy
+                    $this->save_endpoint_strategy($path, array(
+                        'current_strategy' => $strategy,
+                        'timestamp' => current_time('mysql'),
+                        'success' => true
+                    ));
+                    
+                    $success = true;
+                    $successful_strategy = $strategy;
+                    break;
+                } else {
+                    error_log("KISMET ENDPOINT: Strategy " . $strategy . " failed for " . $path . ": " . $result['error']);
+                    $last_error = $result['error'];
+                }
+            }
+            
+            if (!$success) {
+                error_log("KISMET ENDPOINT: All strategies failed for " . $path . ". Last error: " . $last_error);
+                
+                // Store failure information
+                $this->save_endpoint_strategy($path, array(
+                    'current_strategy' => Kismet_Strategy_Registry::FAILED,
+                    'timestamp' => current_time('mysql'),
+                    'success' => false,
+                    'error' => $last_error
+                ));
+                
+                return array(
+                    'path' => $path,
+                    'overall_success' => false,
+                    'error' => $last_error
+                );
             }
             
             // Store endpoint config for runtime handling
             $this->endpoints[$path] = $config;
             
-            // Ensure the recommended_approach is preserved in the returned results
-            $test_results['recommended_approach'] = $approach;
-            
-            // **SIMPLIFIED: Persist simple strategy information for dashboard access**
-            $this->save_endpoint_strategy($path, array(
-                'current_strategy' => $approach,
-                'current_strategy_index' => $strategy_index,
-                'timestamp' => current_time('mysql'),
-                'both_strategies_work' => $test_results['wordpress_rewrite_test']['success'] && $test_results['physical_file_test']['success']
-            ));
-            
-            error_log("KISMET ENDPOINT: Returning test results with approach: " . ($test_results['recommended_approach'] ?? 'NULL'));
-            
-            return $test_results;
+            return array(
+                'path' => $path,
+                'overall_success' => true,
+                'strategy_used' => $successful_strategy ?? 'unknown'
+            );
             
         } catch (Exception $e) {
             error_log("KISMET ENDPOINT ERROR: Failed to register endpoint $path: " . $e->getMessage());
             
-            // **SIMPLIFIED: Store error information for dashboard**
+            // Store error information
             $this->save_endpoint_strategy($path, array(
-                'current_strategy' => 'failed',
-                'current_strategy_index' => 0,
+                'current_strategy' => Kismet_Strategy_Registry::FAILED,
                 'error' => $e->getMessage(),
-                'timestamp' => current_time('mysql')
+                'timestamp' => current_time('mysql'),
+                'success' => false
             ));
             
-            // Return error results
             return array(
                 'path' => $path,
                 'overall_success' => false,
-                'can_proceed' => false,
-                'recommended_approach' => null,
                 'error' => $e->getMessage()
             );
         }
-    }
-    
-    /**
-     * Create static file approach
-     */
-    private function create_static_file($path, $content) {
-        $file_path = ABSPATH . ltrim($path, '/');
-        
-        // Create directory if needed
-        $dir_path = dirname($file_path);
-        if (!file_exists($dir_path)) {
-            if (!wp_mkdir_p($dir_path)) {
-                error_log("KISMET ENDPOINT ERROR: Cannot create directory: " . $dir_path);
-                return false;
-            }
-        }
-        
-        // Write file
-        $result = file_put_contents($file_path, $content);
-        if ($result === false) {
-            error_log("KISMET ENDPOINT ERROR: Cannot write file: " . $file_path);
-            return false;
-        }
-        
-        error_log("KISMET ENDPOINT: Created static file: " . $file_path);
-        return true;
-    }
-    
-    /**
-     * Register WordPress rewrite endpoint
-     */
-    private function register_rewrite_endpoint($path, $config) {
-        // Convert path to rewrite pattern
-        $pattern = '^' . ltrim($path, '/') . '$';
-        $pattern = str_replace('.', '\.', $pattern); // Escape dots
-        $pattern = str_replace('/', '\/', $pattern); // Escape slashes
-        
-        // Create unique query var based on path
-        $query_var = 'kismet_endpoint_' . md5($path);
-        
-        // Add rewrite rule
-        add_rewrite_rule($pattern, 'index.php?' . $query_var . '=1', 'top');
-        
-        // Store query var for later registration
-        $config['query_var'] = $query_var;
-        
-        error_log("KISMET ENDPOINT: Added rewrite rule: " . $pattern . " => " . $query_var);
     }
     
     /**
@@ -212,13 +208,6 @@ class Kismet_Endpoint_Manager {
     }
     
     /**
-     * Get current request path for debugging
-     */
-    private function get_current_request_path() {
-        return $_SERVER['REQUEST_URI'] ?? '/';
-    }
-    
-    /**
      * Clean up endpoint files during deactivation
      */
     public function cleanup_endpoint($path) {
@@ -241,7 +230,7 @@ class Kismet_Endpoint_Manager {
     }
     
     /**
-     * **SIMPLIFIED: Save endpoint strategy information for dashboard access**
+     * Save endpoint strategy information for dashboard access
      */
     private function save_endpoint_strategy($path, $strategy_data) {
         $endpoint_key = $this->path_to_option_key($path);
@@ -252,21 +241,21 @@ class Kismet_Endpoint_Manager {
     }
     
     /**
-     * **SIMPLIFIED: Get strategy information for a specific endpoint**
+     * Get strategy information for a specific endpoint
      */
     public function get_endpoint_strategy($path) {
         $endpoint_key = $this->path_to_option_key($path);
         $option_name = 'kismet_endpoint_strategy_' . $endpoint_key;
         
         return get_option($option_name, array(
-            'current_strategy' => 'unknown',
-            'current_strategy_index' => 0,
-            'timestamp' => null
+            'current_strategy' => Kismet_Strategy_Registry::UNKNOWN,
+            'timestamp' => null,
+            'success' => false
         ));
     }
     
     /**
-     * **SIMPLIFIED: Get all endpoint strategies for dashboard display**
+     * Get all endpoint strategies for dashboard display
      */
     public function get_all_endpoint_strategies() {
         $strategies = array();
@@ -286,71 +275,7 @@ class Kismet_Endpoint_Manager {
     }
     
     /**
-     * **SIMPLIFIED: Get available strategies array**
-     */
-    private function get_available_strategies() {
-        return array('physical_file', 'wordpress_rewrite');
-    }
-    
-    /**
-     * **SIMPLIFIED: Get next strategy to try**
-     */
-    private function get_next_strategy_index($current_index) {
-        $strategies = $this->get_available_strategies();
-        return ($current_index + 1) % count($strategies);
-    }
-    
-    /**
-     * **SIMPLIFIED: Determine best approach and save simple strategy data**
-     */
-    private function determine_best_approach($path, $test_results) {
-        $strategies = $this->get_available_strategies();
-        $wp_success = $test_results['wordpress_rewrite_test']['success'] ?? false;
-        $file_success = $test_results['physical_file_test']['success'] ?? false;
-        
-        // Try strategies in order: physical_file (index 0), then wordpress_rewrite (index 1)
-        if ($file_success) {
-            error_log("KISMET ENDPOINT: Choosing physical_file (index 0)");
-            return array('strategy' => 'physical_file', 'index' => 0);
-        }
-        
-        if ($wp_success) {
-            error_log("KISMET ENDPOINT: Choosing wordpress_rewrite (index 1)");
-            return array('strategy' => 'wordpress_rewrite', 'index' => 1);
-        }
-        
-        error_log("KISMET ENDPOINT: No working strategy found");
-        return array('strategy' => null, 'index' => 0);
-    }
-    
-    /**
-     * **NEW: Determine what the fallback strategy should be**
-     */
-    private function determine_fallback_strategy($test_results) {
-        $wp_success = $test_results['wordpress_rewrite_test']['success'] ?? false;
-        $file_success = $test_results['physical_file_test']['success'] ?? false;
-        $current_approach = $test_results['recommended_approach'] ?? null;
-        
-        // If both work, the fallback is the one not currently used
-        if ($wp_success && $file_success) {
-            return ($current_approach === 'wordpress_rewrite') ? 'physical_file' : 'wordpress_rewrite';
-        }
-        
-        // If only one works, no fallback available
-        if ($wp_success && !$file_success) {
-            return 'none_available';
-        }
-        
-        if ($file_success && !$wp_success) {
-            return 'none_available';
-        }
-        
-        // If neither works
-        return 'manual_intervention_required';
-    }
-    
-    /**
-     * **NEW: Convert URL path to safe option key**
+     * Convert URL path to safe option key
      */
     private function path_to_option_key($path) {
         // Convert path to safe option key by removing slashes and dots
@@ -360,7 +285,28 @@ class Kismet_Endpoint_Manager {
     }
     
     /**
-     * **NEW: Clean up strategy data during deactivation**
+     * Deactivate a specific endpoint
+     * 
+     * @param string $path Endpoint path to deactivate
+     */
+    public function deactivate_endpoint($path) {
+        error_log("KISMET ENDPOINT: Deactivating endpoint: " . $path);
+        
+        // Remove from active endpoints
+        if (isset($this->endpoints[$path])) {
+            unset($this->endpoints[$path]);
+        }
+        
+        // Clean up strategy data for this endpoint
+        $endpoint_key = $this->path_to_option_key($path);
+        $option_name = 'kismet_endpoint_strategy_' . $endpoint_key;
+        delete_option($option_name);
+        
+        error_log("KISMET ENDPOINT: Endpoint deactivated: " . $path);
+    }
+    
+    /**
+     * Clean up strategy data during deactivation
      */
     public function cleanup_strategy_data() {
         $common_endpoints = array(
@@ -378,29 +324,5 @@ class Kismet_Endpoint_Manager {
         }
         
         error_log("KISMET ENDPOINT: Cleaned up strategy data for all endpoints");
-    }
-    
-    /**
-     * **NEW: Get ordered strategy preferences for each endpoint type**
-     */
-    private function get_endpoint_strategy_preferences() {
-        return array(
-            '/.well-known/ai-plugin.json' => array('physical_file', 'wordpress_rewrite'),
-            '/.well-known/mcp/servers.json' => array('physical_file', 'wordpress_rewrite'),
-            '/robots.txt' => array('physical_file', 'wordpress_rewrite'),
-            '/llms.txt' => array('physical_file', 'wordpress_rewrite'),
-            '/ask' => array('wordpress_rewrite', 'physical_file'),
-            // Add more endpoint-specific preferences as needed
-        );
-    }
-    
-    /**
-     * **NEW: Get preferred strategy order for a specific path**
-     */
-    private function get_preferred_strategies($path) {
-        $preferences = $this->get_endpoint_strategy_preferences();
-        
-        // Return specific preferences if defined, otherwise use defaults
-        return $preferences[$path] ?? array('wordpress_rewrite', 'physical_file');
     }
 } 

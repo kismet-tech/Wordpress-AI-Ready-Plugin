@@ -1,9 +1,13 @@
 <?php
 /**
- * Robots Installer - Installation Logic ONLY
+ * Robots Content Logic
  *
- * This class handles ONE-TIME setup during plugin activation/deactivation.
+ * This class defines the content and behavior for the robots.txt enhancement.
+ * It handles ONE-TIME setup during plugin activation/deactivation.
  * It NEVER runs on page loads. NO init hooks.
+ * 
+ * RESPONSIBILITY: Define AI discovery content for robots.txt file
+ * RUNS: Only during plugin activation/deactivation
  * 
  * @package Kismet_Ask_Proxy
  */
@@ -14,7 +18,7 @@ if (!defined('ABSPATH')) {
 
 require_once(plugin_dir_path(__FILE__) . '../shared/class-file-safety-manager.php');
 
-class Kismet_Robots_Installer {
+class Kismet_Robots_Content_Logic {
     
     /**
      * Plugin activation - runs ONCE when plugin is activated
@@ -55,11 +59,15 @@ class Kismet_Robots_Installer {
      */
     private static function enhance_robots_file() {
         $robots_file = ABSPATH . 'robots.txt';
+        error_log("KISMET ROBOTS DEBUG: Attempting to enhance robots.txt at: " . $robots_file);
+        
         $file_safety_manager = new Kismet_File_Safety_Manager();
         
         // Check if robots.txt already exists
         if (file_exists($robots_file)) {
+            error_log("KISMET ROBOTS DEBUG: robots.txt exists, reading content");
             $existing_content = file_get_contents($robots_file);
+            error_log("KISMET ROBOTS DEBUG: Existing content length: " . strlen($existing_content));
             
             // Check if our content is already there
             if (strpos($existing_content, '# AI/LLM Discovery Section') !== false) {
@@ -67,24 +75,32 @@ class Kismet_Robots_Installer {
                 return;
             }
             
-            // Safely append our content
-            $enhanced_content = $existing_content . "\n" . self::get_ai_robots_section();
+            // Safely append our content with proper spacing
+            $enhanced_content = rtrim($existing_content) . "\n\n" . ltrim(self::get_ai_robots_section());
+            error_log("KISMET ROBOTS DEBUG: Enhanced content length: " . strlen($enhanced_content));
             
         } else {
+            error_log("KISMET ROBOTS DEBUG: robots.txt does not exist, creating new file");
             // Create new robots.txt with our content + WordPress defaults
-            $enhanced_content = self::get_default_wordpress_robots() . "\n" . self::get_ai_robots_section();
+            $enhanced_content = self::get_default_wordpress_robots() . "\n\n" . ltrim(self::get_ai_robots_section());
+            error_log("KISMET ROBOTS DEBUG: New content length: " . strlen($enhanced_content));
         }
         
+        error_log("KISMET ROBOTS DEBUG: Calling file safety manager with POLICY_CONTENT_ANALYSIS");
         $result = $file_safety_manager->safe_file_create(
             $robots_file, 
             $enhanced_content, 
             Kismet_File_Safety_Manager::POLICY_CONTENT_ANALYSIS
         );
         
+        error_log("KISMET ROBOTS DEBUG: File safety manager result: " . json_encode($result));
+        
         if ($result['success']) {
             error_log("KISMET INSTALLER: robots.txt enhanced successfully");
         } else {
-            throw new Exception('Failed to enhance robots.txt: ' . implode(', ', $result['errors'] ?? []));
+            $error_msg = 'Failed to enhance robots.txt: ' . implode(', ', $result['errors'] ?? []);
+            error_log("KISMET ROBOTS DEBUG: Enhancement failed: " . $error_msg);
+            throw new Exception($error_msg);
         }
     }
     
@@ -96,8 +112,7 @@ class Kismet_Robots_Installer {
         $site_url = get_site_url();           // DB operation
         $current_date = current_time('Y-m-d'); // DB operation
         
-        return "
-# AI/LLM Discovery Section (Added by Kismet Plugin)
+        return "# AI/LLM Discovery Section (Added by Kismet Plugin)
 # Last updated: {$current_date}
 
 # AI Endpoints
@@ -133,6 +148,23 @@ Disallow: /wp-admin/
 Allow: /wp-admin/admin-ajax.php
 
 Sitemap: {$site_url}/wp-sitemap.xml";
+    }
+    
+    /**
+     * Plugin uninstall - complete cleanup
+     */
+    public static function uninstall() {
+        error_log("KISMET INSTALLER: Robots uninstall starting");
+        
+        try {
+            // Same as deactivation but more thorough
+            self::cleanup_robots_enhancement();
+            
+            error_log("KISMET INSTALLER: Robots uninstall completed");
+            
+        } catch (Exception $e) {
+            error_log("KISMET INSTALLER ERROR: Robots uninstall failed: " . $e->getMessage());
+        }
     }
     
     /**

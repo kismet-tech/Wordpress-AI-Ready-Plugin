@@ -18,9 +18,16 @@ class Kismet_Endpoint_Status_Dashboard {
      * Initialize the dashboard
      */
     public function __construct() {
-        // Register AJAX handlers for endpoint testing
+        // Register AJAX handlers for endpoint testing only
         add_action('wp_ajax_kismet_test_endpoint', array($this, 'ajax_test_endpoint'));
         add_action('wp_ajax_kismet_test_all_endpoints', array($this, 'ajax_test_all_endpoints'));
+        
+        // **NEW: Initialize strategy switcher for secure admin actions**
+        require_once(plugin_dir_path(__FILE__) . '../admin/class-strategy-switcher.php');
+        $this->strategy_switcher = new Kismet_Strategy_Switcher();
+        
+        // Display admin messages
+        add_action('admin_notices', array($this->strategy_switcher, 'display_admin_messages'));
     }
     
     /**
@@ -138,20 +145,7 @@ class Kismet_Endpoint_Status_Dashboard {
                     });
                 });
                 
-                // **NEW: Handle fallback button clicks**
-                $(document).on("click", ".try-fallback-btn", function(e) {
-                    e.preventDefault();
-                    var button = $(this);
-                    
-                    if (confirm("This will attempt to switch to the fallback strategy. Continue?")) {
-                        button.prop("disabled", true).text("Switching...");
-                        
-                        // You could add AJAX call here to actually switch strategies
-                        // For now, just show a message
-                        alert("Fallback strategy switching will be implemented. For now, please contact support.");
-                        button.prop("disabled", false).text("Try Fallback");
-                    }
-                });
+                // **REMOVED: Old AJAX strategy switching - now using secure WordPress admin actions**
                 
                 // **NEW: Show button examples**
                 $("#kismet-show-example").click(function(e) {
@@ -312,22 +306,20 @@ class Kismet_Endpoint_Status_Dashboard {
         $html .= esc_html($status['status']) . '<br>';
         $html .= '<small>' . esc_html($status['result']) . '</small>';
         
-        // **SIMPLIFIED: Show strategy information and next strategy button**
-        if (isset($status['current_strategy']) && $status['current_strategy'] !== 'unknown') {
-            $strategy_name = $this->format_strategy_name($status['current_strategy']);
+        // Get strategy information from endpoint manager (if needed for advanced display)
+        $endpoint_path = $this->get_endpoint_path_from_status($status);
+        if ($endpoint_path) {
+            require_once(plugin_dir_path(__FILE__) . '../shared/class-endpoint-manager.php');
+            $endpoint_manager = Kismet_Endpoint_Manager::get_instance();
+            $strategy_info = $endpoint_manager->get_endpoint_strategy($endpoint_path);
             
-            if ($status['is_working']) {
-                $html .= '<br><strong style="color: #00a32a; font-size: 12px;">✓ ' . esc_html($strategy_name) . ' working</strong>';
-            } else {
-                $html .= '<br><strong style="color: #d63638; font-size: 12px;">✗ ' . esc_html($strategy_name) . ' not working</strong>';
+            if (isset($strategy_info['current_strategy']) && $strategy_info['current_strategy'] !== 'unknown') {
+                $strategy_name = $this->format_strategy_name($strategy_info['current_strategy']);
                 
-                // **SIMPLIFIED: Show next strategy button based on simple array index**
-                if (isset($status['current_strategy_index'])) {
-                    $next_strategy = $this->get_next_strategy($status['current_strategy_index']);
-                    if ($next_strategy) {
-                        $next_strategy_name = $this->format_strategy_name($next_strategy);
-                        $html .= '<br><button type="button" class="button button-small try-fallback-btn" data-endpoint="' . esc_attr($this->get_endpoint_key_from_status($status)) . '" data-strategy="' . esc_attr($next_strategy) . '" style="margin-top: 6px; font-size: 11px;">Try ' . esc_html($next_strategy_name) . '</button>';
-                    }
+                if ($status['is_working']) {
+                    $html .= '<br><strong style="color: #00a32a; font-size: 12px;">✓ ' . esc_html($strategy_name) . ' active</strong>';
+                } else {
+                    $html .= '<br><strong style="color: #d63638; font-size: 12px;">✗ ' . esc_html($strategy_name) . ' failed</strong>';
                 }
             }
         }
@@ -336,55 +328,84 @@ class Kismet_Endpoint_Status_Dashboard {
         return $html;
     }
     
-    /**
-     * **SIMPLIFIED: Get the next strategy to try based on simple array index**
-     */
-    private function get_next_strategy($current_index) {
-        $strategies = array('physical_file', 'wordpress_rewrite');
-        $next_index = ($current_index + 1) % count($strategies);
-        return $strategies[$next_index];
-    }
+
     
     /**
-     * **NEW: Extract endpoint key from status data for button actions**
+     * **NEW: Extract endpoint path from status data for admin actions**
      */
-    private function get_endpoint_key_from_status($status) {
-        // Map URL patterns to endpoint keys used in the dashboard
-        $url_to_key_map = array(
-            '/.well-known/ai-plugin.json' => 'ai_plugin',
-            '/.well-known/mcp/servers.json' => 'mcp_servers',
-            '/llms.txt' => 'llms_txt',
-            '/ask' => 'ask_endpoint',
-            '/robots.txt' => 'robots_txt'
+    private function get_endpoint_path_from_status($status) {
+        // Map URL patterns to endpoint paths
+        $url_to_path_map = array(
+            '/.well-known/ai-plugin.json' => '/.well-known/ai-plugin.json',
+            '/.well-known/mcp/servers.json' => '/.well-known/mcp/servers.json',
+            '/llms.txt' => '/llms.txt',
+            '/ask' => '/ask',
+            '/robots.txt' => '/robots.txt'
         );
         
-        foreach ($url_to_key_map as $url_pattern => $key) {
+        foreach ($url_to_path_map as $url_pattern => $path) {
             if (isset($status['url']) && strpos($status['url'], $url_pattern) !== false) {
-                return $key;
+                return $path;
             }
         }
         
-        return 'unknown';
+        return null;
     }
     
     /**
      * Format strategy names for display
      */
     private function format_strategy_name($strategy) {
-        switch ($strategy) {
-            case 'wordpress_rewrite':
-                return 'WordPress Rewrite';
-            case 'physical_file':
-                return 'Static File';
-            case 'failed':
-                return 'Setup Failed';
-            case 'none_available':
-                return 'No Fallback';
-            case 'manual_intervention_required':
-                return 'Manual Fix Needed';
-            default:
-                return ucfirst(str_replace('_', ' ', $strategy));
+        // Use the display names from the strategy registry
+        $display_names = Kismet_Strategy_Registry::get_strategy_display_names();
+        
+        if (isset($display_names[$strategy])) {
+            return $display_names[$strategy];
         }
+        
+        // Fallback for unknown strategies
+        return ucfirst(str_replace('_', ' ', $strategy));
+    }
+    
+    /**
+     * **NEW: Get server information from global plugin instance**
+     * 
+     * @return array Server information for admin display
+     */
+    public function get_server_info() {
+        global $kismet_ask_proxy_plugin;
+        
+        if ($kismet_ask_proxy_plugin) {
+            return $kismet_ask_proxy_plugin->get_server_info();
+        }
+        
+        // Fallback if plugin instance not available
+        return array(
+            'type' => 'Unknown',
+            'version' => null,
+            'raw_string' => '',
+            'capabilities' => array(),
+            'preferred_strategy' => 'wordpress_rewrite',
+            'supports_htaccess' => false,
+            'supports_nginx_config' => false
+        );
+    }
+    
+    /**
+     * **NEW: Get recommended strategy from global plugin instance**
+     * 
+     * @param string $endpoint_path The endpoint path
+     * @return string Recommended strategy
+     */
+    public function get_recommended_strategy($endpoint_path) {
+        global $kismet_ask_proxy_plugin;
+        
+        if ($kismet_ask_proxy_plugin) {
+            return $kismet_ask_proxy_plugin->get_recommended_strategy($endpoint_path);
+        }
+        
+        // Fallback strategy
+        return 'wordpress_rewrite';
     }
     
     /**
@@ -419,4 +440,6 @@ class Kismet_Endpoint_Status_Dashboard {
             )
         );
     }
+    
+    // **REMOVED: Old AJAX strategy switching handler - now using secure WordPress admin actions**
 } 
