@@ -14,13 +14,23 @@ if (!defined('ABSPATH')) {
 class Kismet_Metrics_Sender {
     
     /**
-     * Get the configured hotel ID from WordPress settings
+     * Get the configured client ID from WordPress settings
+     * 
+     * @return string|false Client ID if configured, false otherwise
+     */
+    public static function get_client_id() {
+        $client_id = get_option('kismet_hotel_id', '');
+        return !empty($client_id) ? $client_id : false;
+    }
+    
+    /**
+     * Get the configured hotel ID from WordPress settings (deprecated - use get_client_id)
      * 
      * @return string|false Hotel ID if configured, false otherwise
+     * @deprecated Use get_client_id() instead
      */
     public static function get_hotel_id() {
-        $hotel_id = get_option('kismet_hotel_id', '');
-        return !empty($hotel_id) ? $hotel_id : false;
+        return self::get_client_id();
     }
     
     /**
@@ -38,10 +48,10 @@ class Kismet_Metrics_Sender {
         
         $metrics_url = KISMET_METRICS_BASE_URL . KISMET_METRICS_ROUTE;
         
-        // Get hotel ID from WordPress settings (optional)
-        $hotel_id = self::get_hotel_id();
-        if (!$hotel_id) {
-            error_log('KISMET METRICS: Hotel ID not configured in plugin settings - sending metrics without hotel ID');
+        // Get client ID from WordPress settings
+        $client_id = self::get_client_id();
+        if (!$client_id) {
+            error_log('KISMET METRICS: Client ID not configured in plugin settings - sending metrics without client identification');
         }
         
         // Construct event data object with all required properties
@@ -56,9 +66,9 @@ class Kismet_Metrics_Sender {
             'referrer' => $_SERVER['HTTP_REFERER'] ?? ''
         );
         
-        // Add hotel ID only if it's configured
-        if ($hotel_id) {
-            $event_data['hotelId'] = $hotel_id;
+        // Only include client ID if it's configured
+        if ($client_id) {
+            $event_data['hotelId'] = $client_id; // Note: keeping 'hotelId' key for API compatibility
         }
         
         // Send as non-blocking POST request

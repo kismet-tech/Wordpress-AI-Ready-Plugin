@@ -55,9 +55,35 @@ class Kismet_AI_Plugin_Admin {
      * Essential configuration section - critical settings that should be configured first
      */
     public function essential_section_callback() {
-        echo '<p><strong>Configure these essential settings for your hotel to enable proper metrics tracking and identification.</strong></p>';
-        echo '<div style="background: #f0f8ff; border: 1px solid #0073aa; border-radius: 4px; padding: 15px; margin: 10px 0;">';
-        echo '<p style="margin: 0; font-weight: 500;">💡 <strong>Important:</strong> The Hotel ID is used to identify your property in analytics and metrics data. While optional, it\'s highly recommended for proper tracking.</p>';
+        echo '<div class="postbox" style="margin-top: 20px;">';
+        echo '<div class="inside">';
+        echo '<p>Configure these essential settings for your business to enable proper metrics tracking and identification.</p>';
+        echo '<div style="background: #e7f3ff; border: 1px solid #72aee6; border-radius: 4px; padding: 12px; margin: 10px 0;">';
+        echo '<strong>ℹ️ Important:</strong> The Client ID is used to identify your business in analytics and metrics data. While optional, it\'s highly recommended for proper tracking.';
+        echo '</div>';
+        
+        // Render Client ID field directly inside the box
+        $value = get_option('kismet_hotel_id', '');
+        $is_configured = !empty($value);
+        
+        echo '<table class="form-table" style="margin-top: 15px;">';
+        echo '<tr>';
+        echo '<th scope="row"><label for="kismet_hotel_id">Client ID</label></th>';
+        echo '<td>';
+        echo "<input type='text' id='kismet_hotel_id' name='kismet_hotel_id' value='$value' class='regular-text' placeholder='my-business-id'>";
+        
+        if ($is_configured) {
+            echo '<span style="color: #46b450; margin-left: 10px; font-weight: 500;">✓ Configured</span>';
+        } else {
+            echo '<span style="color: #dc3232; margin-left: 10px; font-weight: 500;">⚠ Not configured</span>';
+        }
+        
+        echo '<p class="description" style="margin-top: 8px;">Unique identifier for your business (e.g., "my-business", "company-name"). This will be included in all metrics data sent to your analytics endpoint for proper tracking and identification.</p>';
+        echo '</td>';
+        echo '</tr>';
+        echo '</table>';
+        
+        echo '</div>';
         echo '</div>';
     }
     
@@ -124,13 +150,7 @@ class Kismet_AI_Plugin_Admin {
         );
         
         // Essential configuration fields
-        add_settings_field(
-            'kismet_hotel_id',
-            'Hotel ID',
-            array($this, 'hotel_id_render'),
-            'kismet_ai_plugin',
-            'kismet_ai_plugin_essential_section'
-        );
+        // Note: Client ID is rendered directly in the section callback to keep it inside the box
         
         // Add settings fields
         add_settings_field(
@@ -290,23 +310,6 @@ class Kismet_AI_Plugin_Admin {
         $value = get_option('kismet_custom_ai_plugin_url', '');
         echo "<input type='url' name='kismet_custom_ai_plugin_url' value='$value' class='regular-text' placeholder='https://example.com/custom-ai-plugin.json'>";
         echo '<p class="description">Leave empty to use auto-generated AI plugin JSON served as static file.</p>';
-    }
-    
-    public function hotel_id_render() {
-        $value = get_option('kismet_hotel_id', '');
-        $is_configured = !empty($value);
-        
-        echo '<div style="margin: 10px 0;">';
-        echo "<input type='text' name='kismet_hotel_id' value='$value' class='regular-text' placeholder='knollcroft' style='font-size: 14px; padding: 8px;'>";
-        
-        if ($is_configured) {
-            echo '<span style="color: #46b450; margin-left: 10px; font-weight: 500;">✓ Configured</span>';
-        } else {
-            echo '<span style="color: #dc3232; margin-left: 10px; font-weight: 500;">⚠ Not configured</span>';
-        }
-        
-        echo '</div>';
-        echo '<p class="description"><strong>Unique identifier for your hotel</strong> (e.g., "knollcroft", "hotel-downtown"). This will be included in all metrics data sent to your analytics endpoint for proper tracking and identification.</p>';
     }
     
     public function hotel_name_render() {
