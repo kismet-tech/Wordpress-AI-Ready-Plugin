@@ -7,7 +7,7 @@
  * 
  * **STRATEGY SWITCHING ARCHITECTURE:**
  * 
- * Uses secure WordPress admin action approach (class-strategy-switcher.php):
+ * Uses secure WordPress admin action approach (class-admin-notice-strategy-handler.php):
  * 1. User clicks "Try [Strategy]" link → Triggers WordPress admin action
  * 2. Admin action stores user preference in database (kismet_strategy_preference_*)
  * 3. Admin action deactivates plugin → Cleans up old implementation properly

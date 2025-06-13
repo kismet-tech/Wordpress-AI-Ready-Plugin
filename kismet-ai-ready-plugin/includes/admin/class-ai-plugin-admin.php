@@ -190,27 +190,33 @@ class Kismet_AI_Plugin_Admin {
     }
     
     /**
-     * **NEW: Server information section - displays detected server type and recommended strategies**
+     * Server information section callback
      */
     public function server_info_section_callback() {
         global $kismet_ask_proxy_plugin;
         
-        echo '<p>Information about your web server environment and optimal file serving strategies for AI endpoints.</p>';
-        
         if ($kismet_ask_proxy_plugin) {
             $server_info = $kismet_ask_proxy_plugin->get_server_info();
-            $this->render_server_info_display($server_info);
         } else {
-            echo '<div class="notice notice-error"><p>❌ Server detection not available - plugin instance not found.</p></div>';
+            // Fallback if plugin instance not available
+            $server_info = array(
+                'type' => 'Unknown',
+                'version' => null,
+                'raw_string' => '',
+                'capabilities' => array(),
+                'preferred_strategy' => 'wordpress_rewrite',
+                'supports_htaccess' => false,
+                'supports_nginx_config' => false
+            );
         }
+        
+        $this->render_server_info_display($server_info);
     }
     
     /**
-     * **NEW: Render server information display**
+     * Render server information display using the proper server info data structure
      */
     private function render_server_info_display($server_info) {
-        global $kismet_ask_proxy_plugin;
-        
         echo '<div class="kismet-server-variables">';
         echo '<table class="widefat fixed striped">';
         echo '<thead>';
@@ -221,52 +227,42 @@ class Kismet_AI_Plugin_Admin {
         echo '</thead>';
         echo '<tbody>';
         
-        // Display all server detection variables
+        // Display server information using the proper data structure
         echo '<tr>';
-        echo '<td><strong>Server Software</strong></td>';
-        echo '<td><code>' . esc_html($kismet_ask_proxy_plugin->server_software ?: 'null') . '</code></td>';
-        echo '</tr>';
-        
-        echo '<tr>';
-        echo '<td><strong>Apache</strong></td>';
-        echo '<td>' . ($kismet_ask_proxy_plugin->is_apache ? '<span style="color: green;">True</span>' : '<span style="color: red;">False</span>') . '</td>';
-        echo '</tr>';
-        
-        echo '<tr>';
-        echo '<td><strong>Nginx</strong></td>';
-        echo '<td>' . ($kismet_ask_proxy_plugin->is_nginx ? '<span style="color: green;">True</span>' : '<span style="color: red;">False</span>') . '</td>';
-        echo '</tr>';
-        
-        echo '<tr>';
-        echo '<td><strong>IIS</strong></td>';
-        echo '<td>' . ($kismet_ask_proxy_plugin->is_iis ? '<span style="color: green;">True</span>' : '<span style="color: red;">False</span>') . '</td>';
-        echo '</tr>';
-        
-        echo '<tr>';
-        echo '<td><strong>LiteSpeed</strong></td>';
-        echo '<td>' . ($kismet_ask_proxy_plugin->is_litespeed ? '<span style="color: green;">True</span>' : '<span style="color: red;">False</span>') . '</td>';
+        echo '<td><strong>Server Type</strong></td>';
+        echo '<td><code>' . esc_html($server_info['type'] ?? 'Unknown') . '</code></td>';
         echo '</tr>';
         
         echo '<tr>';
         echo '<td><strong>Server Version</strong></td>';
-        echo '<td><code>' . esc_html($kismet_ask_proxy_plugin->server_version ?: 'null') . '</code></td>';
+        echo '<td><code>' . esc_html($server_info['version'] ?? 'Unknown') . '</code></td>';
+        echo '</tr>';
+        
+        echo '<tr>';
+        echo '<td><strong>Raw Server String</strong></td>';
+        echo '<td><code>' . esc_html($server_info['raw_string'] ?? 'Unknown') . '</code></td>';
         echo '</tr>';
         
         echo '<tr>';
         echo '<td><strong>Supports .htaccess</strong></td>';
-        echo '<td>' . ($kismet_ask_proxy_plugin->supports_htaccess ? '<span style="color: green;">True</span>' : '<span style="color: red;">False</span>') . '</td>';
+        echo '<td>' . (($server_info['supports_htaccess'] ?? false) ? '<span style="color: green;">True</span>' : '<span style="color: red;">False</span>') . '</td>';
         echo '</tr>';
         
         echo '<tr>';
         echo '<td><strong>Supports Nginx Config</strong></td>';
-        echo '<td>' . ($kismet_ask_proxy_plugin->supports_nginx_config ? '<span style="color: green;">True</span>' : '<span style="color: red;">False</span>') . '</td>';
+        echo '<td>' . (($server_info['supports_nginx_config'] ?? false) ? '<span style="color: green;">True</span>' : '<span style="color: red;">False</span>') . '</td>';
         echo '</tr>';
         
         echo '<tr>';
         echo '<td><strong>Server Capabilities</strong></td>';
         echo '<td>';
-        if ($kismet_ask_proxy_plugin->supports_htaccess) echo '<span style="color: green;">.htaccess ✓</span> ';
-        if ($kismet_ask_proxy_plugin->supports_nginx_config) echo '<span style="color: green;">nginx ✓</span> ';
+        if (!empty($server_info['capabilities']) && is_array($server_info['capabilities'])) {
+            foreach ($server_info['capabilities'] as $capability) {
+                echo '<span style="color: green;">' . esc_html($capability) . ' ✓</span> ';
+            }
+        } else {
+            echo '<span style="color: #666;">None detected</span>';
+        }
         echo '</td>';
         echo '</tr>';
         

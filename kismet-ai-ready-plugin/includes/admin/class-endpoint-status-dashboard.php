@@ -23,7 +23,7 @@ class Kismet_Endpoint_Status_Dashboard {
         add_action('wp_ajax_kismet_test_all_endpoints', array($this, 'ajax_test_all_endpoints'));
         
         // **NEW: Initialize strategy switcher for secure admin actions**
-        require_once(plugin_dir_path(__FILE__) . '../admin/class-strategy-switcher.php');
+        require_once(plugin_dir_path(__FILE__) . '../admin/class-admin-notice-strategy-handler.php');
         $this->strategy_switcher = new Kismet_Strategy_Switcher();
         
         // Display admin messages

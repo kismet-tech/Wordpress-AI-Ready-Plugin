@@ -27,7 +27,7 @@ class Kismet_Endpoint_Status_Notice {
         add_action('wp_ajax_kismet_dismiss_status_notice', array($this, 'ajax_dismiss_notice'));
         
         // **NEW: Initialize strategy switcher for secure admin actions**
-        require_once(plugin_dir_path(__FILE__) . '../admin/class-strategy-switcher.php');
+        require_once(plugin_dir_path(__FILE__) . '../admin/class-admin-notice-strategy-handler.php');
         $this->strategy_switcher = new Kismet_Strategy_Switcher();
         
         // Add admin scripts for notice functionality
