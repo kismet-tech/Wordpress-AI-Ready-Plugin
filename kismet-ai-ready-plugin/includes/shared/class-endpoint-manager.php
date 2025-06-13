@@ -198,6 +198,19 @@ class Kismet_Endpoint_Manager {
         error_log('KISMET DEBUG: All query vars: ' . print_r($wp_query->query_vars, true));
         error_log('KISMET DEBUG: Request URI: ' . $_SERVER['REQUEST_URI']);
         
+        //TODO: REMOVE THIS LOG WHEN /ASK ENDPOINT WORKS.
+        // **CONFIRMATION LOG: Check if /ask endpoint is registered and working**
+        if ($_SERVER['REQUEST_URI'] === '/ask' || strpos($_SERVER['REQUEST_URI'], '/ask') === 0) {
+            $ask_registered = isset($this->endpoints['/ask']);
+            error_log('KISMET CONFIRMATION: /ask endpoint registered in manager: ' . ($ask_registered ? 'YES' : 'NO'));
+            error_log('KISMET CONFIRMATION: Registered endpoints: ' . print_r(array_keys($this->endpoints), true));
+            
+            if (!$ask_registered) {
+                error_log('KISMET CONFIRMATION: /ask endpoint NOT registered - WordPress will treat "ask" as page name');
+                error_log('KISMET CONFIRMATION: This explains why [name] => ask appears in query vars');
+            }
+        }
+        
         // Check each registered endpoint
         foreach ($this->endpoints as $path => $config) {
             $query_var = $config['query_var'];

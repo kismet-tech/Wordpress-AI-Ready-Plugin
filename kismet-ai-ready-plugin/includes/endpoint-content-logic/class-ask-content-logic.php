@@ -80,6 +80,7 @@ class Kismet_Ask_Content_Logic {
      * - POST: Proxies requests to the Kismet backend API
      */
     public static function generate_ask_content() {
+        error_log('KISMET DEBUG: Generating ask content');
         // Handle CORS preflight
         if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
             header('Access-Control-Allow-Origin: *');
@@ -156,8 +157,9 @@ class Kismet_Ask_Content_Logic {
         
         // Handle GET request (Show status page)
         if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-            // Load and display the template
-            $template_path = plugin_dir_path(dirname(__FILE__)) . 'views/ask.php';
+            // Load and display the template - FIX: Go up two levels to plugin root
+            $template_path = plugin_dir_path(dirname(dirname(__FILE__))) . 'views/ask.php';
+            error_log("KISMET DEBUG: Looking for template at: " . $template_path);
             if (file_exists($template_path)) {
                 include($template_path);
                 exit;
@@ -186,5 +188,38 @@ class Kismet_Ask_Content_Logic {
     public static function uninstall() {
         delete_option('kismet_ask_endpoint_strategy');
         error_log("KISMET INSTALLER: Ask endpoint strategy tracking cleaned up during uninstall");
+    }
+
+    /**
+     * Add this temporary debugging method
+     */
+    public static function add_debug_hooks() {
+        // Check if our query var is detected
+        add_action('wp', function() {
+            $kismet_ask = get_query_var('kismet_ask');
+            if ($kismet_ask) {
+                error_log('KISMET DEBUG: Query var detected - kismet_ask=' . $kismet_ask);
+                // This is where we should call our content generator
+                self::generate_ask_content();
+            }
+        });
+        
+        // Log rewrite rules on admin pages only (to avoid spam)
+        if (is_admin()) {
+            add_action('admin_init', function() {
+                global $wp_rewrite;
+                $rules = $wp_rewrite->wp_rewrite_rules();
+                $ask_rule_found = false;
+                foreach ($rules as $pattern => $replacement) {
+                    if (strpos($pattern, 'ask') !== false) {
+                        error_log('KISMET DEBUG: Found ask rewrite rule - ' . $pattern . ' => ' . $replacement);
+                        $ask_rule_found = true;
+                    }
+                }
+                if (!$ask_rule_found) {
+                    error_log('KISMET DEBUG: No ask rewrite rule found in current rules');
+                }
+            }, 999);
+        }
     }
 } 

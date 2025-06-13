@@ -288,6 +288,24 @@ global $kismet_ask_proxy_plugin;
 $kismet_ask_proxy_plugin = new Kismet_Ask_Proxy_Plugin();
 error_log('KISMET PLUGIN: Main plugin class initialized successfully');
 
+// **FIX: Register /ask endpoint on init hook when WordPress is fully loaded**
+add_action('init', function() {
+    global $kismet_ask_proxy_plugin;
+    error_log('KISMET FIX: Registering /ask endpoint on init hook');
+    
+    $endpoint_manager = Kismet_Endpoint_Manager::get_instance();
+    $ask_registration_result = $endpoint_manager->register_endpoint(array(
+        'path' => '/ask',
+        'content_generator' => array('Kismet_Ask_Content_Logic', 'generate_ask_content'),
+        'content_type' => 'text/html'
+    ));
+    error_log('KISMET FIX: /ask endpoint registration result: ' . print_r($ask_registration_result, true));
+}, 10);
+
+// Add debug hooks for /ask endpoint troubleshooting
+Kismet_Ask_Content_Logic::add_debug_hooks();
+error_log('KISMET DEBUG: Debug hooks added for /ask endpoint');
+
 // Check plugin activation status
 $plugin_file = plugin_basename(__FILE__);
 $is_active = is_plugin_active($plugin_file);
