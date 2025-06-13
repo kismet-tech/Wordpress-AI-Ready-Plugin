@@ -208,58 +208,45 @@ class Kismet_Strategy_Executor {
      * @return array Building block execution result
      */
     private static function execute_building_block($block_name, $endpoint_path, $endpoint_data, $plugin_instance) {
-        $class_map = array(
-            'create_static_file' => 'Kismet_Install_Create_Static_File',
-            'add_wordpress_rewrite' => 'Kismet_Install_Add_WordPress_Rewrite',
-            'add_htaccess_rules' => 'Kismet_Install_Add_Htaccess_Rules',
-            'suggest_nginx_config' => 'Kismet_Install_Suggest_Nginx_Config',
-            'modify_existing_file' => 'Kismet_Install_Modify_Existing_File',
-            'ask_handler' => 'Kismet_Install_Ask_Handler'
-        );
-        
-        if (!isset($class_map[$block_name])) {
-            return array(
-                'success' => false,
-                'error' => "Unknown building block: {$block_name}"
-            );
-        }
-        
-        $class_name = $class_map[$block_name];
-        
-        // Load the building block class if not already loaded
-        if (!class_exists($class_name)) {
-            $file_map = array(
-                'Kismet_Install_Create_Static_File' => 'class-install-create-static-file.php',
-                'Kismet_Install_Add_WordPress_Rewrite' => 'class-install-add-wordpress-rewrite.php',
-                'Kismet_Install_Add_Htaccess_Rules' => 'class-install-add-htaccess-rules.php',
-                'Kismet_Install_Suggest_Nginx_Config' => 'class-install-suggest-nginx-config.php',
-                'Kismet_Install_Modify_Existing_File' => 'class-install-modify-existing-file.php',
-                'Kismet_Install_Ask_Handler' => 'class-install-ask-handler.php'
-            );
+        try {
+            // Convert block name to class name format (e.g., ask_handler -> Kismet_Install_Ask_Handler)
+            $class_name = 'Kismet_Install_' . implode('_', array_map('ucfirst', explode('_', $block_name)));
             
-            if (isset($file_map[$class_name])) {
-                $file_path = plugin_dir_path(__FILE__) . $file_map[$class_name];
-                if (file_exists($file_path)) {
-                    require_once($file_path);
-                }
+            // The file is already in the current directory
+            $block_file = __FILE__;
+            $block_file = str_replace('class-strategy-executor.php', 'class-install-' . str_replace('_', '-', $block_name) . '.php', $block_file);
+            
+            error_log("KISMET DEBUG: Looking for building block file: " . $block_file);
+            error_log("KISMET DEBUG: Looking for class name: " . $class_name);
+            
+            if (!file_exists($block_file)) {
+                return array(
+                    'success' => false,
+                    'error' => "Building block file not found: {$block_file}",
+                    'block' => $block_name
+                );
             }
+            
+            require_once $block_file;
             
             if (!class_exists($class_name)) {
                 return array(
                     'success' => false,
-                    'error' => "Building block class not found: {$class_name}"
+                    'error' => "Building block class not found: {$class_name}",
+                    'block' => $block_name
                 );
             }
-        }
-        
-        try {
-            return $class_name::execute($endpoint_path, $endpoint_data, $plugin_instance);
+            
+            // Execute the building block
+            $result = $class_name::execute($endpoint_path, $endpoint_data, $plugin_instance);
+            
+            return $result;
+            
         } catch (Exception $e) {
             return array(
                 'success' => false,
                 'error' => "Building block execution failed: " . $e->getMessage(),
-                'building_block' => $block_name,
-                'class' => $class_name
+                'block' => $block_name
             );
         }
     }

@@ -101,6 +101,19 @@ class Kismet_Strategy_Registry {
     /** Strategy not yet determined */
     const UNKNOWN = 'unknown';
     
+    // ===========================================
+    // ASK ENDPOINT STRATEGIES
+    // ===========================================
+    
+    /** Ask handler basic strategy */
+    const ASK_HANDLER_BASIC = 'ask_handler_basic';
+    
+    /** Ask handler with .htaccess backup strategy */
+    const ASK_HANDLER_WITH_HTACCESS_BACKUP = 'ask_handler_with_htaccess_backup';
+    
+    /** Ask handler with Nginx optimization strategy */
+    const ASK_HANDLER_WITH_NGINX_OPTIMIZATION = 'ask_handler_with_nginx_optimization';
+    
     /**
      * Get all available implementation strategies (excludes status/error types)
      * 
@@ -130,7 +143,12 @@ class Kismet_Strategy_Registry {
             
             // Special strategies
             self::FILE_MODIFICATION,
-            self::FILE_APPEND
+            self::FILE_APPEND,
+            
+            // Ask endpoint strategies
+            self::ASK_HANDLER_BASIC,
+            self::ASK_HANDLER_WITH_HTACCESS_BACKUP,
+            self::ASK_HANDLER_WITH_NGINX_OPTIMIZATION
         );
     }
     

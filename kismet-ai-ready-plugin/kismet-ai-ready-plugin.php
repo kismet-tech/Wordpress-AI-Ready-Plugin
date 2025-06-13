@@ -68,16 +68,13 @@ class Kismet_Ask_Proxy_Plugin {
         // Initialize endpoint manager for intelligent endpoint handling
         $this->endpoint_manager = Kismet_Endpoint_Manager::get_instance();
         
-        // Ask handler hooks are managed by the Strategy Coordinator building blocks
-        // The building blocks set up persistent hooks during activation
-        
         // Initialize admin interface (only loads in admin context)
         $this->ai_plugin_admin = new Kismet_AI_Plugin_Admin();
         
         // Initialize endpoint status notice (shows across admin pages)
         $this->endpoint_status_notice = new Kismet_Endpoint_Status_Notice();
     
-        // Add endpoint manager hooks
+        // Let endpoint manager handle all query vars and redirects
         add_filter('query_vars', array($this->endpoint_manager, 'add_query_vars'));
         add_action('template_redirect', array($this->endpoint_manager, 'handle_template_redirect'));
         
@@ -343,16 +340,7 @@ register_activation_hook(__FILE__, function() {
         Kismet_MCP_Servers_Content_Logic::activate();
         Kismet_Robots_Content_Logic::activate();
         Kismet_LLMS_Content_Logic::activate();
-        
-        // Register /ask endpoint through new Strategy Coordinator system
-        global $kismet_ask_proxy_plugin;
-        $strategy_coordinator = new Kismet_Strategy_Coordinator($kismet_ask_proxy_plugin);
-        $ask_result = $strategy_coordinator->install_endpoint('/ask', array(
-            'content_type' => 'text/html',
-            'methods' => array('GET', 'POST', 'OPTIONS')
-        ), 'ask');
-        
-        error_log('KISMET ACTIVATION: /ask endpoint registration result: ' . print_r($ask_result, true));
+        Kismet_Ask_Content_Logic::activate();
         
         // Flush rewrite rules ONCE
         flush_rewrite_rules();
@@ -417,16 +405,7 @@ function kismet_manual_activation() {
         Kismet_MCP_Servers_Content_Logic::activate();
         Kismet_Robots_Content_Logic::activate();
         Kismet_LLMS_Content_Logic::activate();
-        
-        // Register /ask endpoint through new Strategy Coordinator system
-        global $kismet_ask_proxy_plugin;
-        $strategy_coordinator = new Kismet_Strategy_Coordinator($kismet_ask_proxy_plugin);
-        $ask_result = $strategy_coordinator->install_endpoint('/ask', array(
-            'content_type' => 'text/html',
-            'methods' => array('GET', 'POST', 'OPTIONS')
-        ), 'ask');
-        
-        error_log('KISMET MANUAL ACTIVATION: /ask endpoint registration result: ' . print_r($ask_result, true));
+        Kismet_Ask_Content_Logic::activate();
         
         // Flush rewrite rules ONCE
         flush_rewrite_rules();

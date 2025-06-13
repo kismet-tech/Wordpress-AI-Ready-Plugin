@@ -134,6 +134,14 @@ class Kismet_Endpoint_Manager {
                 );
             }
             
+            // Special handling for /ask endpoint
+            if ($path === '/ask') {
+                $config['query_var'] = 'kismet_ask';
+            } else {
+                // Create unique query var based on path for other endpoints
+                $config['query_var'] = 'kismet_endpoint_' . md5($path);
+            }
+            
             // Store endpoint config for runtime handling
             $this->endpoints[$path] = $config;
             
@@ -166,11 +174,17 @@ class Kismet_Endpoint_Manager {
      * Add query vars for all registered endpoints
      */
     public function add_query_vars($vars) {
-        foreach ($this->endpoints as $config) {
+        error_log('KISMET DEBUG: Adding query vars in Endpoint Manager');
+        error_log('KISMET DEBUG: Current vars: ' . print_r($vars, true));
+        
+        foreach ($this->endpoints as $path => $config) {
             if (isset($config['query_var'])) {
                 $vars[] = $config['query_var'];
+                error_log("KISMET DEBUG: Added query var {$config['query_var']} for {$path}");
             }
         }
+        
+        error_log('KISMET DEBUG: Final vars: ' . print_r($vars, true));
         return $vars;
     }
     
@@ -178,14 +192,21 @@ class Kismet_Endpoint_Manager {
      * Handle template redirect for all registered endpoints
      */
     public function handle_template_redirect() {
+        global $wp_query;
+        
+        error_log('KISMET DEBUG: Template redirect check in Endpoint Manager');
+        error_log('KISMET DEBUG: All query vars: ' . print_r($wp_query->query_vars, true));
+        error_log('KISMET DEBUG: Request URI: ' . $_SERVER['REQUEST_URI']);
+        
+        // Check each registered endpoint
         foreach ($this->endpoints as $path => $config) {
-            if (isset($config['query_var'])) {
-                $query_var = $config['query_var'];
-                
-                if (get_query_var($query_var)) {
-                    $this->serve_endpoint_content($config);
-                    exit;
-                }
+            $query_var = $config['query_var'];
+            error_log("KISMET DEBUG: Checking endpoint {$path} with query var {$query_var}");
+            
+            if (isset($wp_query->query_vars[$query_var])) {
+                error_log("KISMET DEBUG: Found match for {$path}");
+                $this->serve_endpoint_content($config);
+                exit;
             }
         }
     }

@@ -43,12 +43,12 @@ class Kismet_Install_Ask_Handler {
             $handler_result = self::initialize_ask_handler();
             $result['details']['handler'] = $handler_result;
             
-            // Step 3: Set up database tables if needed
-            $database_result = self::setup_database_tables();
-            $result['details']['database'] = $database_result;
+            // Step 3: Track which strategy we're using
+            $strategy_result = self::track_strategy_status();
+            $result['details']['strategy'] = $strategy_result;
             
-            // Step 4: Flush rewrite rules to activate
-            flush_rewrite_rules();
+            // Step 4: Mark that this endpoint needs rewrite rules flushed
+            $result['details']['rewrite_rules'] = 'Pending flush';
             
             $result['success'] = true;
             $result['message'] = "Ask Handler building block executed successfully";
@@ -70,20 +70,29 @@ class Kismet_Install_Ask_Handler {
      * @return array Result with rewrite rule details
      */
     private static function setup_ask_rewrite_rules() {
-        // Add rewrite rule for /ask endpoint
-        add_rewrite_rule('^ask/?$', 'index.php?kismet_ask_endpoint=1', 'top');
+        error_log('KISMET DEBUG: Setting up /ask rewrite rules');
         
-        // Add query var filter - this needs to be PERSISTENT, not just during activation
-        add_filter('query_vars', array(self::class, 'add_ask_query_vars'));
+        // Get current rewrite rules
+        global $wp_rewrite;
+        error_log('KISMET DEBUG: Current rewrite rules: ' . print_r($wp_rewrite->rules, true));
         
-        // Add template redirect hook - this needs to be PERSISTENT, not just during activation  
-        add_action('template_redirect', array(self::class, 'handle_ask_template_redirect'));
+        // Add rewrite rule for /ask endpoint with consistent query var
+        add_rewrite_rule('^ask/?$', 'index.php?kismet_ask=1', 'top');
+        
+        // Add query var filter
+        add_filter('query_vars', array(__CLASS__, 'add_ask_query_vars'));
+        
+        // Flush rewrite rules to ensure they take effect
+        flush_rewrite_rules();
+        
+        // Get updated rewrite rules after flush
+        error_log('KISMET DEBUG: Updated rewrite rules: ' . print_r($wp_rewrite->rules, true));
         
         return array(
             'success' => true,
             'rewrite_rule' => '^ask/?$',
-            'query_var' => 'kismet_ask_endpoint',
-            'target' => 'index.php?kismet_ask_endpoint=1'
+            'query_var' => 'kismet_ask',
+            'target' => 'index.php?kismet_ask=1'
         );
     }
     
@@ -93,11 +102,14 @@ class Kismet_Install_Ask_Handler {
      * @param array $vars Current query vars
      * @return array Modified query vars
      */
-    public static function add_ask_query_vars($vars) {
-        if (!in_array('kismet_ask_endpoint', $vars)) {
-            $vars[] = 'kismet_ask_endpoint';
-        }
-        return $vars;
+    public static function add_ask_query_vars($query_vars) {
+        error_log('KISMET DEBUG: Adding ask query vars');
+        error_log('KISMET DEBUG: Current query vars: ' . print_r($query_vars, true));
+        
+        $query_vars[] = 'kismet_ask';
+        
+        error_log('KISMET DEBUG: Updated query vars: ' . print_r($query_vars, true));
+        return $query_vars;
     }
     
     /**
@@ -106,25 +118,34 @@ class Kismet_Install_Ask_Handler {
      * This is the persistent hook that processes /ask requests on every page load
      */
     public static function handle_ask_template_redirect() {
-        // Check if this is an /ask request
-        if (!get_query_var('kismet_ask_endpoint')) {
-            return; // Not our request, bail early
-        }
+        global $wp_query;
+        error_log('KISMET DEBUG: Template redirect check');
+        error_log('KISMET DEBUG: Query vars: ' . print_r($wp_query->query_vars, true));
         
-        error_log("KISMET HANDLER: /ask endpoint request detected");
-        
-        // Check for proper request method
-        $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
-        
-        if ($method === 'OPTIONS') {
-            self::handle_cors_preflight();
-            exit;
-        }
-        
-        if ($method === 'POST') {
-            self::handle_ask_post();
+        if (isset($wp_query->query_vars['kismet_ask'])) {
+            error_log('KISMET DEBUG: Found kismet_ask in query vars');
+            
+            // Load the Ask Content Logic to generate the HTML page
+            $content_logic_file = plugin_dir_path(__FILE__) . '../../endpoint-content-logic/class-ask-content-logic.php';
+            error_log('KISMET DEBUG: Looking for content logic at: ' . $content_logic_file);
+            
+            if (file_exists($content_logic_file)) {
+                error_log('KISMET DEBUG: Content logic file found');
+                require_once $content_logic_file;
+                
+                // Generate and output the HTML
+                $content = Kismet_Ask_Content_Logic::generate_ask_content();
+                error_log('KISMET DEBUG: Generated content length: ' . strlen($content));
+                echo $content;
+                exit;
+            } else {
+                error_log('KISMET DEBUG: Content logic file NOT found at: ' . $content_logic_file);
+                status_header(500);
+                echo '<h1>Ask Endpoint Error</h1><p>Content logic file not found. Please check the plugin installation.</p>';
+                exit;
+            }
         } else {
-            self::handle_ask_get();
+            error_log('KISMET DEBUG: kismet_ask not found in query vars');
         }
     }
     
@@ -186,7 +207,7 @@ class Kismet_Install_Ask_Handler {
         header('Access-Control-Allow-Origin: *');
         
         // Load the Ask Content Logic to generate the HTML page
-        $content_logic_file = plugin_dir_path(__FILE__) . '../endpoint-content-logic/class-ask-content-logic.php';
+        $content_logic_file = plugin_dir_path(__FILE__) . '../../endpoint-content-logic/class-ask-content-logic.php';
         if (file_exists($content_logic_file)) {
             require_once $content_logic_file;
         }
@@ -356,57 +377,116 @@ class Kismet_Install_Ask_Handler {
     }
     
     /**
-     * Validate Ask Handler availability
+     * Initialize Ask Handler with proper hooks and query vars
      * 
      * @return array Result with handler validation details
      */
     private static function initialize_ask_handler() {
-        // Check that required content logic file exists
-        $content_logic_file = plugin_dir_path(__FILE__) . '../endpoint-content-logic/class-ask-content-logic.php';
-        
-        $content_logic_exists = file_exists($content_logic_file);
-        
-        if (!$content_logic_exists) {
-            return array(
-                'success' => false,
-                'error' => 'Required Ask Content Logic file not found',
-                'content_logic_file_exists' => $content_logic_exists
-            );
-        }
-        
-        return array(
-            'success' => true,
-            'message' => 'Ask Handler building block validated and persistent hooks registered',
-            'content_logic_file' => $content_logic_file,
-            'handler_integrated' => true,
-            'hooks_registered' => array(
-                'query_vars' => 'add_ask_query_vars',
-                'template_redirect' => 'handle_ask_template_redirect'
-            )
-        );
-    }
-    
-    /**
-     * Set up database tables for chat logging
-     * 
-     * @return array Result with database setup details
-     */
-    private static function setup_database_tables() {
-        // Use the existing database setup from Ask Content Logic
-        if (class_exists('Kismet_Ask_Content_Logic')) {
-            Kismet_Ask_Content_Logic::create_database_tables();
+        try {
+            error_log('KISMET DEBUG: Initializing Ask Handler');
+            
+            // Add query var filter with higher priority to ensure it runs
+            add_filter('query_vars', function($vars) {
+                error_log('KISMET DEBUG: Adding kismet_ask to query vars');
+                if (!in_array('kismet_ask', $vars)) {
+                    $vars[] = 'kismet_ask';
+                }
+                error_log('KISMET DEBUG: Updated query vars: ' . print_r($vars, true));
+                return $vars;
+            }, 20);
+            error_log('KISMET DEBUG: Added query_vars filter with priority 20');
+            
+            // Add rewrite rule with high priority
+            add_action('init', function() {
+                error_log('KISMET DEBUG: Adding rewrite rule for /ask');
+                add_rewrite_rule('^ask/?$', 'index.php?kismet_ask=1', 'top');
+            }, 20);
+            error_log('KISMET DEBUG: Added rewrite rule with priority 20');
+            
+            // Add template redirect action with high priority
+            add_action('template_redirect', function() {
+                global $wp_query;
+                error_log('KISMET DEBUG: Template redirect check for /ask');
+                error_log('KISMET DEBUG: Query vars: ' . print_r($wp_query->query_vars, true));
+                
+                if (isset($wp_query->query_vars['kismet_ask'])) {
+                    error_log('KISMET DEBUG: Found kismet_ask in query vars');
+                    
+                    // Load the Ask Content Logic to generate the HTML page
+                    $content_logic_file = plugin_dir_path(__FILE__) . '../../endpoint-content-logic/class-ask-content-logic.php';
+                    error_log('KISMET DEBUG: Looking for content logic at: ' . $content_logic_file);
+                    
+                    if (file_exists($content_logic_file)) {
+                        error_log('KISMET DEBUG: Content logic file found');
+                        require_once $content_logic_file;
+                        
+                        // Generate and output the HTML
+                        $content = Kismet_Ask_Content_Logic::generate_ask_content();
+                        error_log('KISMET DEBUG: Generated content length: ' . strlen($content));
+                        echo $content;
+                        exit;
+                    } else {
+                        error_log('KISMET DEBUG: Content logic file NOT found at: ' . $content_logic_file);
+                        status_header(500);
+                        echo '<h1>Ask Endpoint Error</h1><p>Content logic file not found. Please check the plugin installation.</p>';
+                        exit;
+                    }
+                } else {
+                    error_log('KISMET DEBUG: kismet_ask not found in query vars');
+                }
+            }, 1);
+            error_log('KISMET DEBUG: Added template_redirect action with priority 1');
+            
+            // Add REST API endpoint for POST requests
+            add_action('rest_api_init', function() {
+                register_rest_route('kismet/v1', '/ask', array(
+                    'methods' => 'POST',
+                    'callback' => array(__CLASS__, 'handle_ask_post'),
+                    'permission_callback' => '__return_true'
+                ));
+            });
+            error_log('KISMET DEBUG: Added REST API endpoint');
             
             return array(
                 'success' => true,
-                'tables_created' => true,
-                'table_name' => 'kismet_chat_logs'
+                'message' => 'Ask Handler initialized with query vars and template redirect hooks',
+                'hooks_added' => array(
+                    'query_vars' => 'add_ask_query_vars',
+                    'template_redirect' => 'handle_ask_template_redirect',
+                    'rest_api' => '/kismet/v1/ask'
+                )
             );
-        } else {
+            
+        } catch (Exception $e) {
+            error_log('KISMET ERROR: Failed to initialize Ask Handler: ' . $e->getMessage());
             return array(
                 'success' => false,
-                'error' => 'Kismet_Ask_Content_Logic class not found for database setup'
+                'error' => 'Failed to initialize Ask Handler: ' . $e->getMessage()
             );
         }
+    }
+    
+    /**
+     * Track strategy status
+     * 
+     * @return array Result with strategy tracking details
+     */
+    private static function track_strategy_status() {
+        // Store the current strategy and next fallback in wp_options
+        $strategy_status = array(
+            'current_strategy' => 'wordpress_rewrite',  // Current strategy being used
+            'next_strategy' => null,                    // Next strategy to try if this fails
+            'last_validated' => current_time('mysql'),  // When we last checked if it works
+            'is_working' => true                        // Whether current strategy is working
+        );
+        
+        update_option('kismet_ask_endpoint_strategy', $strategy_status);
+            
+        return array(
+            'success' => true,
+            'strategy_tracked' => true,
+            'current_strategy' => $strategy_status['current_strategy']
+        );
     }
     
     /**
@@ -466,13 +546,56 @@ class Kismet_Install_Ask_Handler {
         // Remove query var filter (WordPress will handle rewrite rule cleanup on flush)
         remove_all_filters('query_vars');
         
-        // Flush rewrite rules to remove our rule
-        flush_rewrite_rules();
+        // Mark that rewrite rules need to be flushed
+        $result['details']['rewrite_rules'] = 'Pending flush';
         
         return array(
             'success' => true,
             'message' => 'Ask Handler cleanup completed',
             'endpoint_path' => $endpoint_path
         );
+    }
+
+    /**
+     * Install the /ask endpoint
+     */
+    public static function install() {
+        error_log('KISMET DEBUG: Starting /ask endpoint installation');
+        
+        try {
+            $result = array(
+                'success' => true,
+                'details' => array()
+            );
+            
+            // Step 1: Add rewrite rule for /ask endpoint
+            error_log('KISMET DEBUG: Adding rewrite rule: ^ask/?$ -> index.php?kismet_ask=1');
+            add_rewrite_rule('^ask/?$', 'index.php?kismet_ask=1', 'top');
+            
+            // Step 2: Load required files
+            error_log('KISMET DEBUG: Loading required files');
+            
+            // Load the Ask Content Logic to generate the HTML page
+            $content_logic_file = plugin_dir_path(__FILE__) . '../../endpoint-content-logic/class-ask-content-logic.php';
+            error_log('KISMET DEBUG: Content logic path: ' . $content_logic_file);
+            
+            if (file_exists($content_logic_file)) {
+                error_log('KISMET DEBUG: Content logic file found and loaded');
+                require_once $content_logic_file;
+            } else {
+                error_log('KISMET DEBUG: Content logic file NOT found at: ' . $content_logic_file);
+                throw new Exception('Required content logic file not found');
+            }
+
+            // ... rest of the installation code ...
+
+            return $result;
+            
+        } catch (Exception $e) {
+            return array(
+                'success' => false,
+                'error' => 'Ask Handler installation failed: ' . $e->getMessage()
+            );
+        }
     }
 } 

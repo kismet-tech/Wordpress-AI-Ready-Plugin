@@ -1,6 +1,6 @@
 ---
 description: 
-globs: 
+globs: .php
 alwaysApply: false
 ---
 # Kismet AI Ready Plugin - Core Features
@@ -13,25 +13,21 @@ WordPress plugin that makes hotel websites AI-discoverable and provides intellig
 ### 1. AI Plugin Discovery
 - **Endpoint**: `/.well-known/ai-plugin.json`
 - **Purpose**: Allows AI tools (ChatGPT, Claude, etc.) to discover and use the hotel assistant
-- **Method**: Static file preferred, WordPress rewrite fallback (no universal approach works)
 - **Configurable**: Hotel name, description, logo, contact info via admin panel
 
 ### 2. MCP Server Discovery  
 - **Endpoint**: `/.well-known/mcp/servers.json`
 - **Purpose**: Model Context Protocol server discovery for AI integrations
-- **Method**: Static file preferred, WordPress rewrite fallback (no universal approach works)
 - **Content**: Hotel assistant server information and capabilities
 
 ### 3. AI/LLM Policy
 - **Endpoint**: `/llms.txt` 
 - **Purpose**: Declares AI/LLM usage policy and available endpoints
-- **Method**: Static file preferred, WordPress rewrite fallback (no universal approach works)
 - **Content**: Usage guidelines, contact info, available AI endpoints
 
 ### 4. Robots.txt Enhancement
 - **Endpoint**: `/robots.txt`
 - **Purpose**: Adds AI-specific directives to existing robots.txt
-- **Method**: Appends AI discovery directives to existing robots.txt
 - **Content**: AI crawler permissions and endpoint listings
 
 ### 5. Ask Endpoint
@@ -74,6 +70,228 @@ WordPress plugin that makes hotel websites AI-discoverable and provides intellig
   - Plugin conflict detection
   - Performance optimization recommendations
 
+## Install Strategies
+
+### Why Multiple Strategies Are Needed
+
+**The Challenge**: There is no universal way to serve files at custom paths (like `/.well-known/ai-plugin.json`) across all WordPress hosting environments. Each server type, hosting provider, and configuration has different capabilities and restrictions.
+
+**The Reality**: 
+- **Apache/LiteSpeed**: Can use `.htaccess` files for URL rewriting and static file serving
+- **Nginx**: Excellent at serving static files but requires server config changes for rewrites
+- **IIS**: Uses `web.config` files but WordPress rewrites are often more reliable
+- **Shared Hosting**: Often restricts file system access and server configuration
+- **Managed WordPress**: May override server configs and prefer WordPress-native solutions
+- **Cloud Platforms**: Have varying capabilities depending on the specific service
+
+### Server Detection System
+
+The plugin includes comprehensive server environment detection that analyzes:
+
+#### Primary Server Detection
+- **Apache**: Detects version, mod_rewrite availability, .htaccess support
+- **Nginx**: Identifies version, static file capabilities, config suggestion feasibility  
+- **LiteSpeed**: Checks .htaccess compatibility, performance features, caching capabilities
+- **Microsoft IIS**: Detects URL Rewrite module, web.config support, version compatibility
+
+#### Hosting Environment Analysis
+- **Shared Hosting**: Limited file system access, restricted server configuration
+- **Managed WordPress**: Optimized for WordPress, may override server configs
+- **Cloud Platforms**: Scalable infrastructure with varying configuration access
+- **VPS/Dedicated**: Full server control with maximum configuration flexibility
+
+#### Permission & Capability Testing
+- **File System**: Tests document root write permissions, directory creation ability
+- **Server Modules**: Validates mod_rewrite, mod_headers, URL Rewrite availability
+- **WordPress Config**: Checks permalink structure, multisite setup, cache plugin conflicts
+
+### Strategy Categories
+
+#### Static File Strategies (Preferred for Performance)
+**Best for**: AI crawlers that need zero-latency access to discovery files
+
+1. **Static File with .htaccess** (`static_file_with_htaccess`)
+   - **Server**: Apache, LiteSpeed
+   - **Method**: Creates physical file + .htaccess rules for direct serving
+   - **Performance**: Excellent (zero PHP execution)
+   - **Use Case**: Sites with Apache/LiteSpeed and file system access
+
+2. **Static File with Nginx Config** (`static_file_with_nginx_suggestion`)
+   - **Server**: Nginx
+   - **Method**: Creates physical file + provides nginx config snippet
+   - **Performance**: Excellent (web server handles directly)
+   - **Use Case**: Nginx sites where user can modify server config
+
+3. **Static File with web.config** (`static_file_with_web_config`)
+   - **Server**: Microsoft IIS
+   - **Method**: Creates physical file + web.config URL rewrite rules
+   - **Performance**: Good (IIS handles directly)
+   - **Use Case**: Windows hosting with IIS and URL Rewrite module
+
+4. **Manual Static File** (`manual_static_file`)
+   - **Server**: Any
+   - **Method**: Creates file with manual configuration instructions
+   - **Performance**: Varies (depends on user's server setup)
+   - **Use Case**: Fallback when automated config isn't possible
+
+#### WordPress Rewrite Strategies (Maximum Compatibility)
+**Best for**: Complex hosting environments where static files can't be reliably served
+
+5. **WordPress Rewrite** (`wordpress_rewrite`)
+   - **Server**: Any
+   - **Method**: WordPress rewrite rules to serve content via PHP
+   - **Performance**: Good (uses WordPress caching)
+   - **Use Case**: Universal fallback, managed hosting environments
+
+6. **WordPress Rewrite with Server Optimizations** (Multiple variants)
+   - **Apache Optimized**: Includes .htaccess performance headers
+   - **Nginx Basic**: WordPress rewrites with nginx-specific caching hints
+   - **IIS Optimized**: WordPress rewrites with IIS-specific performance settings
+   - **LiteSpeed Optimized**: Takes advantage of LiteSpeed caching features
+   - **Cloud Optimized**: Configured for cloud platform best practices
+   - **Shared Hosting Safe**: Minimal resource usage for restricted environments
+
+### Endpoint-Specific Strategy Selection
+
+Each endpoint has its own strategy selector that considers the server environment and endpoint requirements:
+
+#### AI Discovery Endpoints (`/.well-known/*`, `/llms.txt`)
+**Priority**: Static file strategies (performance critical for AI crawlers)
+```
+Apache/LiteSpeed + File Access → Static File with .htaccess
+Nginx + File Access → Static File with Nginx Config  
+IIS + URL Rewrite → Static File with web.config
+Managed WordPress Hosting → WordPress Rewrite (Optimized)
+Shared Hosting → WordPress Rewrite (Safe Mode)
+```
+
+#### Ask Endpoint (`/ask`)
+**Priority**: WordPress rewrite strategies (requires PHP processing)
+```
+All Servers → WordPress Rewrite (with server-specific optimizations)
+```
+
+#### Robots.txt Enhancement
+**Priority**: File modification strategies
+```
+Existing robots.txt → File Append
+No robots.txt → Static File Creation
+```
+
+### Strategy Selection Algorithm
+
+1. **Environment Analysis**
+   - Server type detection (Apache, Nginx, IIS, LiteSpeed)
+   - Hosting environment classification (shared, managed, cloud, VPS)
+   - Permission testing (file system access, module availability)
+
+2. **Endpoint Requirements Matching**
+   - Performance needs (AI crawlers need static files)
+   - Processing requirements (Ask endpoint needs PHP)
+   - Compatibility constraints (some hosts block certain approaches)
+
+3. **Strategy Prioritization**
+   - Primary strategy based on optimal performance + compatibility
+   - Secondary fallback strategies for when primary fails
+   - Manual intervention options for complex environments
+
+4. **Validation & Fallback**
+   - Test endpoint accessibility after implementation
+   - Automatic fallback to next strategy if validation fails
+   - User notification with specific fix recommendations
+
+### Implementation Architecture
+
+The strategy system is organized into five key components:
+
+#### Strategy Registry (`strategies.php`)
+Central registry that maps strategy names to the Strategy Executor and provides strategy metadata.
+- Contains all strategy constants (`STATIC_FILE_WITH_HTACCESS`, `WORDPRESS_REWRITE`, etc.)
+- Delegates execution to the unified Strategy Executor
+- Provides strategy display names and validation
+
+#### Strategy Selectors (`/strategies/class-*-strategies.php`)
+Endpoint-specific classes that analyze server environment and choose optimal strategies:
+- `class-ai-plugin-strategies.php`: AI plugin discovery endpoint
+- `class-mcp-servers-strategies.php`: MCP server discovery endpoint  
+- `class-ask-strategies.php`: Ask endpoint with API proxying
+- `class-robots-strategies.php`: Robots.txt enhancement
+
+#### Strategy Coordinator (`class-strategy-coordinator.php`)
+Orchestrates strategy execution by trying strategies in order until one succeeds.
+- Gets strategy order from Strategy Selectors
+- Calls Strategy Registry to execute each strategy
+- Tracks which strategy worked for each endpoint
+- Handles cleanup and error recovery
+
+#### Strategy Executor (`class-strategy-executor.php`)
+Maps strategy names to building block combinations and executes them in correct order.
+- Receives strategy name from Strategy Registry
+- Maps strategies to building block combinations (e.g., `static_file_with_htaccess` → `[create_static_file, add_htaccess_rules]`)
+- Executes building blocks sequentially with error recovery
+- Handles cleanup if any building block fails
+
+#### Building Blocks (`/implementations/class-install-*.php`)
+Composable components that perform specific installation tasks:
+- `class-install-create-static-file.php`: Creates static files with proper content
+- `class-install-add-wordpress-rewrite.php`: Adds WordPress rewrite rules and query vars
+- `class-install-add-htaccess-rules.php`: Adds .htaccess rules for headers and caching
+- `class-install-suggest-nginx-config.php`: Provides nginx configuration suggestions
+- `class-install-modify-existing-file.php`: Modifies existing files (like robots.txt)
+
+#### Server Detector (`class-server-detector.php`)
+Comprehensive environment analysis that provides detailed server capabilities and recommendations.
+
+### Strategy Execution Flow
+
+The complete flow from endpoint installation request to successful implementation:
+
+```
+1. Endpoint Installation Request
+   ↓
+2. Strategy Coordinator gets strategy order from Strategy Selectors
+   ↓  
+3. Strategy Coordinator calls Strategy Registry.execute_strategy()
+   ↓
+4. Strategy Registry loads and calls Strategy Executor
+   ↓
+5. Strategy Executor maps strategy name to building blocks
+   ↓
+6. Strategy Executor executes building blocks in sequence:
+   - create_static_file (if needed)
+   - add_wordpress_rewrite (if needed)  
+   - add_htaccess_rules (if needed)
+   - suggest_nginx_config (if needed)
+   - modify_existing_file (if needed)
+   ↓
+7. Success/Failure result bubbles back up the chain
+```
+
+**Example**: `static_file_with_htaccess` strategy execution:
+1. Strategy Executor receives `'static_file_with_htaccess'`
+2. Maps to building blocks: `['create_static_file', 'add_htaccess_rules']`
+3. Executes `create_static_file` → Creates physical file with content
+4. Executes `add_htaccess_rules` → Adds CORS headers and caching rules
+5. Returns success with details of both operations
+
+**Benefits of Composable Architecture**:
+- **Maintainable**: Fix bugs in one building block, all strategies benefit
+- **Testable**: Test building blocks independently
+- **Reusable**: Same building blocks used across multiple strategies
+- **Extensible**: Add new strategies by combining existing building blocks
+
+### Troubleshooting & Fallbacks
+
+When a strategy fails, the system provides:
+
+1. **Automatic Fallback**: Tries next compatible strategy
+2. **Detailed Error Reporting**: Explains why the strategy failed
+3. **Environment-Specific Recommendations**: Server config suggestions
+4. **Manual Override Options**: Allow users to force specific strategies
+5. **Real-time Validation**: Tests endpoint accessibility after changes
+
+This multi-layered approach ensures reliable endpoint serving across the diverse WordPress hosting landscape while optimizing performance where possible.
+
 ## Architecture Principles
 
 ### Clean Separation
@@ -92,18 +310,127 @@ WordPress plugin that makes hotel websites AI-discoverable and provides intellig
 ### File Structure
 ```
 includes/
-  installers/     # One-time setup classes - each handles both activation AND deactivation
-    class-ai-plugin-installer.php      # Generates .well-known/ai-plugin.json static file
-    class-mcp-servers-installer.php    # Generates .well-known/mcp/servers.json static file  
-    class-llms-installer.php           # Generates llms.txt static file
-    class-robots-installer.php         # Enhances robots.txt file
-    class-ask-installer.php            # Sets up /ask rewrite rules & database tables
-  handlers/       # Runtime request processing (minimal - only /ask endpoint)
-    class-ask-handler.php             # ONLY handler needed - processes /ask requests
-  admin/          # Configuration interface
-  environment/    # Compatibility detection
-  shared/         # Common utilities
+  installers/                         # Installation strategy coordination
+    class-strategy-coordinator.php    # Coordinates between content logic and installation strategies
+    implementations/                  # Composable building blocks and strategy executor
+      class-strategy-executor.php     # Maps strategies to building block combinations
+      class-install-create-static-file.php        # Building block: Create static files
+      class-install-add-wordpress-rewrite.php     # Building block: Add WordPress rewrite rules
+      class-install-add-htaccess-rules.php        # Building block: Add .htaccess rules
+      class-install-suggest-nginx-config.php      # Building block: Suggest nginx configuration
+      class-install-modify-existing-file.php      # Building block: Modify existing files
+  
+  endpoint-content-logic/            # Endpoint-specific content and behavior definitions
+    class-ai-plugin-content-logic.php    # Defines content for /.well-known/ai-plugin.json
+    class-mcp-servers-content-logic.php  # Defines content for /.well-known/mcp/servers.json
+    class-llms-content-logic.php         # Defines content for llms.txt
+    class-robots-content-logic.php       # Defines AI discovery content for robots.txt
+    class-ask-content-logic.php          # Defines database schema and behavior for /ask
+  
+  strategies/                        # Strategy selection logic per endpoint type
+    strategies.php                   # Strategy registry and metadata
+    class-ai-plugin-strategies.php   # Strategy selector for AI plugin endpoint
+    class-mcp-servers-strategies.php # Strategy selector for MCP servers endpoint
+    class-ask-strategies.php         # Strategy selector for ask endpoint
+    class-robots-strategies.php      # Strategy selector for robots.txt enhancement
+  
+  handlers/                          # Runtime request processing (minimal - only /ask endpoint)
+    class-ask-handler.php            # ONLY handler needed - processes /ask requests
+  
+  admin/                             # Configuration interface
+  environment/                       # Compatibility detection and server analysis
+  shared/                            # Common utilities and safety managers
 ```
+
+## Detailed Folder Structure Explanation
+
+### `/installers/` - Installation Strategy Coordination
+**Purpose**: Coordinates HOW endpoints get implemented across different server environments
+- **`class-strategy-coordinator.php`**: 
+  - Main orchestrator that receives endpoint content from content logic classes
+  - Determines which installation strategy to use based on server environment
+  - Handles fallback strategies when primary methods fail
+  - Tests endpoint accessibility and reports results
+- **`implementations/`**: Contains concrete installation strategy classes
+  - Each class implements a specific installation method (static files, WordPress rewrites, etc.)
+  - Handles server-specific configurations and optimizations
+  - Provides validation and cleanup functionality
+
+### `/endpoint-content-logic/` - Endpoint-Specific Content Definitions
+**Purpose**: Defines WHAT content each endpoint should serve and its behavior
+- **`class-ai-plugin-content-logic.php`**: 
+  - Generates JSON content for `/.well-known/ai-plugin.json`
+  - Handles hotel information, API endpoints, authentication settings
+  - Manages static file generation during activation
+- **`class-mcp-servers-content-logic.php`**: 
+  - Creates JSON for `/.well-known/mcp/servers.json` 
+  - Defines MCP server capabilities and metadata
+- **`class-llms-content-logic.php`**: 
+  - Generates LLM policy content for `llms.txt`
+  - Defines AI/LLM usage guidelines and available endpoints
+- **`class-robots-content-logic.php`**: 
+  - Creates AI discovery section for `robots.txt`
+  - Handles robots.txt enhancement without breaking existing content
+- **`class-ask-content-logic.php`**: 
+  - Defines database schema for conversation logging
+  - Sets up WordPress rewrite rules for `/ask` endpoint
+  - Handles activation/deactivation database operations
+
+### `/strategies/` - Strategy Selection Logic
+**Purpose**: Determines the best installation approach for each endpoint type
+- **`strategies.php`**: 
+  - Central registry of all available installation strategies
+  - Maps strategy names to implementation classes
+  - Provides strategy metadata and capabilities
+- **`class-*-strategies.php`**: Endpoint-specific strategy selectors
+  - Analyze server environment and endpoint requirements
+  - Return ordered list of strategies to try (most optimal first)
+  - Handle endpoint-specific considerations (performance vs compatibility)
+
+### `/handlers/` - Runtime Request Processing
+**Purpose**: Processes dynamic requests that require PHP execution
+- **`class-ask-handler.php`**: 
+  - ONLY handler needed - all other endpoints are static files
+  - Processes API requests to `/ask` endpoint
+  - Proxies requests to Kismet backend
+  - Logs conversations and handles responses
+  - Serves chat interface for human visitors
+
+### `/admin/` - WordPress Admin Interface
+**Purpose**: Provides configuration interface in WordPress admin
+- Settings page for hotel information and AI plugin configuration
+- Endpoint status monitoring and diagnostics
+- Static file regeneration triggers
+- Environment compatibility reports
+
+### `/environment/` - Server Environment Analysis
+**Purpose**: Analyzes WordPress hosting environment capabilities
+- Server type detection (Apache, Nginx, IIS, LiteSpeed)
+- Hosting environment classification (shared, managed, cloud, VPS)
+- Permission testing and capability analysis
+- Performance optimization recommendations
+
+### `/shared/` - Common Utilities
+**Purpose**: Shared functionality used across the plugin
+- File safety managers for secure file operations
+- Common validation and helper functions
+- Shared constants and configuration
+
+## Architecture Flow
+
+1. **Activation**: 
+   - Endpoint content logic classes define WHAT each endpoint needs
+   - Strategy coordinator determines HOW to implement each endpoint
+   - Implementation classes execute the chosen strategies
+   
+2. **Runtime**: 
+   - Static endpoints served directly by web server (zero PHP)
+   - Only `/ask` endpoint requires handler for dynamic processing
+   
+3. **Configuration**: 
+   - Admin interface updates settings
+   - Triggers regeneration of static files through content logic classes
+   - Strategy coordinator re-evaluates and updates implementations
 
 ### Installer vs Handler Decision Matrix
 | Endpoint | Type | Implementation | Runtime Processing |
