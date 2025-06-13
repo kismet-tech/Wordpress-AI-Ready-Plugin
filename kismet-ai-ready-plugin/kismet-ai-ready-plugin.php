@@ -32,7 +32,7 @@ define('KISMET_METRICS_BASE_URL', 'https://289a-67-245-16-134.ngrok-free.app'); 
 // Example: '/log-user-agent' or any endpoint you want to receive metrics
 // Do not include a trailing slash on the base URL, and do include a leading slash on the route
 
-define('KISMET_METRICS_ROUTE', '/metric/addMetric');
+define('KISMET_METRICS_ROUTE', '/Metrics/addMetric');
 
 // Include required classes
 require_once KISMET_PLUGIN_PATH . 'includes/installers/class-ai-plugin-installer.php';

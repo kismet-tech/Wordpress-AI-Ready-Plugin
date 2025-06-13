@@ -31,13 +31,9 @@ class Kismet_Metrics_Sender {
         // Construct event data object with all required properties
         $event_data = array(
             'eventType' => $eventType,
-            'eventName' => '', // TODO: Fill with appropriate event name
+            'eventName' => $eventType, // TODO: Fill with appropriate event name
             'timestamp' => current_time('c'), // ISO 8601 format
-            'userMarketingProfileId' => '', // TODO: Fill with user marketing profile ID
-            'anonymousId' => '', // TODO: Fill with anonymous ID
-            'hotelId' => '', // TODO: Fill with hotel ID
-            'campaignId' => '', // TODO: Fill with campaign ID
-            'valueInCents' => 0, // TODO: Fill with value in cents
+            'hotelId' => 'knollcroft', // TODO: Fill with hotel ID
             'source' => 'web', // Default to 'web' for WordPress plugin
             'ipAddress' => $_SERVER['REMOTE_ADDR'] ?? '',
             'userAgent' => $_SERVER['HTTP_USER_AGENT'] ?? '',
