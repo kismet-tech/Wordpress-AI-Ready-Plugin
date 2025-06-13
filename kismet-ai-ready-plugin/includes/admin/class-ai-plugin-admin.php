@@ -52,6 +52,16 @@ class Kismet_AI_Plugin_Admin {
     }
     
     /**
+     * Essential configuration section - critical settings that should be configured first
+     */
+    public function essential_section_callback() {
+        echo '<p><strong>Configure these essential settings for your hotel to enable proper metrics tracking and identification.</strong></p>';
+        echo '<div style="background: #f0f8ff; border: 1px solid #0073aa; border-radius: 4px; padding: 15px; margin: 10px 0;">';
+        echo '<p style="margin: 0; font-weight: 500;">💡 <strong>Important:</strong> The Hotel ID is used to identify your property in analytics and metrics data. While optional, it\'s highly recommended for proper tracking.</p>';
+        echo '</div>';
+    }
+    
+    /**
      * Add admin menu for AI Plugin settings
      */
     public function add_admin_menu() {
@@ -70,6 +80,7 @@ class Kismet_AI_Plugin_Admin {
     public function settings_init() {
         // Register settings
         register_setting('kismet_ai_plugin', 'kismet_custom_ai_plugin_url');
+        register_setting('kismet_ai_plugin', 'kismet_hotel_id');
         register_setting('kismet_ai_plugin', 'kismet_hotel_name');
         register_setting('kismet_ai_plugin', 'kismet_hotel_description');
         register_setting('kismet_ai_plugin', 'kismet_logo_url');
@@ -77,6 +88,13 @@ class Kismet_AI_Plugin_Admin {
         register_setting('kismet_ai_plugin', 'kismet_legal_info_url');
         
         // Add settings sections
+        add_settings_section(
+            'kismet_ai_plugin_essential_section',
+            'Essential Configuration',
+            array($this, 'essential_section_callback'),
+            'kismet_ai_plugin'
+        );
+        
         add_settings_section(
             'kismet_ai_plugin_status_section',
             'Endpoint Status Dashboard',
@@ -105,6 +123,15 @@ class Kismet_AI_Plugin_Admin {
             'kismet_ai_plugin'
         );
         
+        // Essential configuration fields
+        add_settings_field(
+            'kismet_hotel_id',
+            'Hotel ID',
+            array($this, 'hotel_id_render'),
+            'kismet_ai_plugin',
+            'kismet_ai_plugin_essential_section'
+        );
+        
         // Add settings fields
         add_settings_field(
             'kismet_custom_ai_plugin_url',
@@ -114,7 +141,7 @@ class Kismet_AI_Plugin_Admin {
             'kismet_ai_plugin_custom_json_section'
         );
         
-        // JSON field settings
+        // JSON field settings (removed hotel_id from here)
         $fields = array(
             'hotel_name' => 'Hotel/Business Name',
             'hotel_description' => 'Hotel Description',
@@ -263,6 +290,23 @@ class Kismet_AI_Plugin_Admin {
         $value = get_option('kismet_custom_ai_plugin_url', '');
         echo "<input type='url' name='kismet_custom_ai_plugin_url' value='$value' class='regular-text' placeholder='https://example.com/custom-ai-plugin.json'>";
         echo '<p class="description">Leave empty to use auto-generated AI plugin JSON served as static file.</p>';
+    }
+    
+    public function hotel_id_render() {
+        $value = get_option('kismet_hotel_id', '');
+        $is_configured = !empty($value);
+        
+        echo '<div style="margin: 10px 0;">';
+        echo "<input type='text' name='kismet_hotel_id' value='$value' class='regular-text' placeholder='knollcroft' style='font-size: 14px; padding: 8px;'>";
+        
+        if ($is_configured) {
+            echo '<span style="color: #46b450; margin-left: 10px; font-weight: 500;">✓ Configured</span>';
+        } else {
+            echo '<span style="color: #dc3232; margin-left: 10px; font-weight: 500;">⚠ Not configured</span>';
+        }
+        
+        echo '</div>';
+        echo '<p class="description"><strong>Unique identifier for your hotel</strong> (e.g., "knollcroft", "hotel-downtown"). This will be included in all metrics data sent to your analytics endpoint for proper tracking and identification.</p>';
     }
     
     public function hotel_name_render() {
