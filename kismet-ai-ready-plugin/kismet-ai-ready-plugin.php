@@ -25,6 +25,15 @@ if (!defined('ABSPATH')) {
 define('KISMET_PLUGIN_PATH', plugin_dir_path(__FILE__));
 define('KISMET_PLUGIN_URL', plugin_dir_url(__FILE__));
 
+// Metrics logging endpoint configuration
+// Change KISMET_METRICS_BASE_URL for different environments (e.g., ngrok for testing, production domain for live)
+define('KISMET_METRICS_BASE_URL', 'https://289a-67-245-16-134.ngrok-free.app'); // <-- CHANGE THIS FOR TEST/PROD
+// The route to append to the base URL for metrics logging
+// Example: '/log-user-agent' or any endpoint you want to receive metrics
+// Do not include a trailing slash on the base URL, and do include a leading slash on the route
+
+define('KISMET_METRICS_ROUTE', '/metric/addMetric');
+
 // Include required classes
 require_once KISMET_PLUGIN_PATH . 'includes/installers/class-ai-plugin-installer.php';
 require_once KISMET_PLUGIN_PATH . 'includes/endpoint-content-logic/class-mcp-servers-content-logic.php';
@@ -45,6 +54,7 @@ require_once KISMET_PLUGIN_PATH . 'includes/admin/class-endpoint-status-dashboar
 require_once KISMET_PLUGIN_PATH . 'includes/plugin-page-notice/class-endpoint-status-notice.php';
 require_once KISMET_PLUGIN_PATH . 'includes/environment/class-endpoint-tester.php';
 require_once KISMET_PLUGIN_PATH . 'includes/environment/class-server-detector.php';
+require_once KISMET_PLUGIN_PATH . 'includes/networking/class-metrics-sender.php';
 
 /**
  * Main plugin class - Clean Architecture

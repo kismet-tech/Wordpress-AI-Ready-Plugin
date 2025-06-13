@@ -93,6 +93,7 @@ class Kismet_Ask_Content_Logic {
         
         // Handle POST request (API Proxy)
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            Kismet_Metrics_Sender::send_endpoint_request_data('api_request');
             $target_url = 'https://api.makekismet.com/ask';
             
             // Parse request data according to NLWebAskRequest DTO
@@ -157,6 +158,7 @@ class Kismet_Ask_Content_Logic {
         
         // Handle GET request (Show status page)
         if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+            Kismet_Metrics_Sender::send_endpoint_request_data('page_view');
             // Load and display the template - FIX: Go up two levels to plugin root
             $template_path = plugin_dir_path(dirname(dirname(__FILE__))) . 'views/ask.php';
             error_log("KISMET DEBUG: Looking for template at: " . $template_path);

@@ -175,7 +175,6 @@ class Kismet_Endpoint_Manager {
      */
     public function add_query_vars($vars) {
         error_log('KISMET DEBUG: Adding query vars in Endpoint Manager');
-        error_log('KISMET DEBUG: Current vars: ' . print_r($vars, true));
         
         foreach ($this->endpoints as $path => $config) {
             if (isset($config['query_var'])) {
@@ -184,7 +183,6 @@ class Kismet_Endpoint_Manager {
             }
         }
         
-        error_log('KISMET DEBUG: Final vars: ' . print_r($vars, true));
         return $vars;
     }
     

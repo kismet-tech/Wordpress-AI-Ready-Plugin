@@ -104,11 +104,9 @@ class Kismet_Install_Ask_Handler {
      */
     public static function add_ask_query_vars($query_vars) {
         error_log('KISMET DEBUG: Adding ask query vars');
-        error_log('KISMET DEBUG: Current query vars: ' . print_r($query_vars, true));
         
         $query_vars[] = 'kismet_ask';
         
-        error_log('KISMET DEBUG: Updated query vars: ' . print_r($query_vars, true));
         return $query_vars;
     }
     
@@ -391,7 +389,6 @@ class Kismet_Install_Ask_Handler {
                 if (!in_array('kismet_ask', $vars)) {
                     $vars[] = 'kismet_ask';
                 }
-                error_log('KISMET DEBUG: Updated query vars: ' . print_r($vars, true));
                 return $vars;
             }, 20);
             error_log('KISMET DEBUG: Added query_vars filter with priority 20');
