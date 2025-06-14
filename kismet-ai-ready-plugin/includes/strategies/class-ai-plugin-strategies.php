@@ -27,10 +27,46 @@ class Kismet_AI_Plugin_Strategies {
      * Performance is critical for AI discovery, so we prioritize the fastest options.
      * 
      * **ENHANCED: Uses comprehensive server analysis for optimal first-time strategy selection**
+     * **ENHANCED: Checks admin toggle for event tracking vs static files preference**
      * 
      * @return array Ordered array of strategies to try
      */
     public function get_ordered_strategies() {
+        // **CHECK ADMIN TOGGLE FOR EVENT TRACKING PREFERENCE**
+        require_once(plugin_dir_path(__FILE__) . '../admin/class-ai-plugin-admin.php');
+        $should_send_events = Kismet_AI_Plugin_Admin::should_send_events();
+        
+        // **LOG TOGGLE STATUS FOR DEBUGGING**
+        error_log("KISMET AI PLUGIN STRATEGIES: Admin toggle status - should_send_events: " . ($should_send_events ? 'TRUE' : 'FALSE'));
+        
+        // **IF CHECKBOX IS UNCHECKED (should send events), prioritize metrics-enabled strategy**
+        if ($should_send_events) {
+            error_log("KISMET AI PLUGIN STRATEGIES: Prioritizing metrics-enabled strategy (checkbox unchecked)");
+            
+            // Put the metrics-enabled WordPress rewrite strategy FIRST
+            $base_strategies = $this->get_base_strategies_for_server();
+            
+            // Prepend the metrics strategy to the beginning
+            array_unshift($base_strategies, 'wordpress_rewrite_with_metrics_and_caching');
+            
+            error_log("KISMET AI PLUGIN STRATEGIES: Final strategy order (events enabled): " . implode(', ', $base_strategies));
+            return $base_strategies;
+        }
+        
+        // **IF CHECKBOX IS CHECKED (static files only), keep original strategy order**
+        error_log("KISMET AI PLUGIN STRATEGIES: Using original strategy order (checkbox checked - static files only)");
+        $original_strategies = $this->get_base_strategies_for_server();
+        error_log("KISMET AI PLUGIN STRATEGIES: Final strategy order (static files only): " . implode(', ', $original_strategies));
+        return $original_strategies;
+    }
+    
+    /**
+     * Get base strategies for the current server environment
+     * This is the original strategy selection logic, extracted for reuse
+     * 
+     * @return array Base strategies in server-optimized order
+     */
+    private function get_base_strategies_for_server() {
         // **MANAGED WORDPRESS HOSTING: Typically optimized for WordPress, prefer rewrites**
         if (isset($this->plugin_instance->hosting_environment['managed_wordpress']) 
             && $this->plugin_instance->hosting_environment['managed_wordpress']) {

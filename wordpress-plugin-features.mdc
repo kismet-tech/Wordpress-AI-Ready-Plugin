@@ -122,10 +122,19 @@ $metrics_url = KISMET_METRICS_BASE_URL . KISMET_METRICS_ROUTE;
 
 **Implementation Status**: 
 - ✅ `/ask` endpoint - **Implemented** (uses WordPress rewrite strategy)
+- 🔄 Admin Toggle - **Implemented** (admin toggle for static files vs metrics tracking)
 - ❌ `/.well-known/ai-plugin.json` - **Planned** (static file primary, metrics in rewrite fallback)
 - ❌ `/.well-known/mcp/servers.json` - **Planned** (static file primary, metrics in rewrite fallback)  
 - ❌ `/llms.txt` - **Planned** (static file primary, metrics in rewrite fallback)
 - ❌ `/robots.txt` - **Planned** (file modification primary, metrics in rewrite fallback)
+
+**Admin Toggle Implementation**:
+- **Location**: WordPress admin → Settings → Kismet AI Plugin → Essential Configuration
+- **Setting Name**: "Use Static Files Only" 
+- **Default**: OFF (events are sent via WordPress rewrites)
+- **When ON**: Pure static files used for maximum performance (no events)
+- **When OFF**: WordPress rewrites used to enable event tracking and metrics collection
+- **Helper Methods**: `should_send_events()` and `is_static_files_only_enabled()` for strategy integration
 
 **Technical Approach**: Modify WordPress rewrite building blocks to include metrics calls, ensuring metrics are captured when endpoints fall back to dynamic serving while preserving the performance benefits of static files for optimal hosting environments.
 
