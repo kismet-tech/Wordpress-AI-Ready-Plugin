@@ -170,6 +170,10 @@ class Kismet_Strategy_Executor {
                 'add_wordpress_rewrite'  // Basic IIS without URL Rewrite
             ),
             
+            'wordpress_rewrite_with_metrics_and_caching' => array(
+                'wordpress_rewrite_with_metrics'
+            ),
+            
             // File modification strategies
             'file_modification' => array(
                 'modify_existing_file'

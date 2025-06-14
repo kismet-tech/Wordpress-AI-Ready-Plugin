@@ -75,6 +75,9 @@ class Kismet_Strategy_Registry {
     /** WordPress rewrite for basic IIS without URL Rewrite */
     const WORDPRESS_REWRITE_IIS_BASIC = 'wordpress_rewrite_iis_basic';
     
+    /** WordPress rewrite with metrics tracking and caching */
+    const WORDPRESS_REWRITE_WITH_METRICS_AND_CACHING = 'wordpress_rewrite_with_metrics_and_caching';
+    
     // ===========================================
     // SPECIAL FILE MODIFICATION STRATEGIES
     // ===========================================
@@ -140,6 +143,7 @@ class Kismet_Strategy_Registry {
             self::WORDPRESS_REWRITE_CLOUD_OPTIMIZED,
             self::WORDPRESS_REWRITE_IIS_URL_REWRITE_ONLY,
             self::WORDPRESS_REWRITE_IIS_BASIC,
+            self::WORDPRESS_REWRITE_WITH_METRICS_AND_CACHING,
             
             // Special strategies
             self::FILE_MODIFICATION,
@@ -256,6 +260,7 @@ class Kismet_Strategy_Registry {
             self::WORDPRESS_REWRITE_CLOUD_OPTIMIZED => 'WordPress Rewrite (Cloud Optimized)',
             self::WORDPRESS_REWRITE_IIS_URL_REWRITE_ONLY => 'WordPress Rewrite (IIS URL Rewrite)',
             self::WORDPRESS_REWRITE_IIS_BASIC => 'WordPress Rewrite (IIS Basic)',
+            self::WORDPRESS_REWRITE_WITH_METRICS_AND_CACHING => 'WordPress Rewrite (Metrics and Caching)',
             
             // Special strategies
             self::FILE_MODIFICATION => 'File Modification',
