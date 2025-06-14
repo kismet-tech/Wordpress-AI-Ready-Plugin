@@ -74,21 +74,21 @@ class Kismet_LLMS_Strategies {
         $server_info = $this->server_detector->get_server_info();
         $strategies = array();
         
-        error_log("KISMET LLMS STRATEGIES: Determining strategies for server: " . $server_info['primary_server']);
+        error_log("KISMET LLMS STRATEGIES: Determining strategies for server: " . $server_info['type']);
         
         // Strategy selection based on server capabilities
-        switch ($server_info['primary_server']) {
+        switch (strtolower($server_info['type'])) {
             case 'apache':
             case 'litespeed':
-                if ($server_info['has_mod_rewrite'] && $server_info['can_use_htaccess']) {
+                if (isset($server_info['supports_htaccess']) && $server_info['supports_htaccess']) {
                     $strategies[] = 'static_file_with_htaccess';
-                    error_log("KISMET LLMS STRATEGIES: Apache/LiteSpeed with mod_rewrite - using static file + .htaccess");
+                    error_log("KISMET LLMS STRATEGIES: Apache/LiteSpeed with htaccess support - using static file + .htaccess");
                 }
                 $strategies[] = 'wordpress_rewrite';
                 break;
                 
             case 'nginx':
-                if ($server_info['can_create_files']) {
+                if (isset($server_info['supports_nginx_config']) && $server_info['supports_nginx_config']) {
                     $strategies[] = 'static_file_with_nginx_suggestion';
                     error_log("KISMET LLMS STRATEGIES: Nginx - using static file + config suggestion");
                 }
@@ -96,9 +96,9 @@ class Kismet_LLMS_Strategies {
                 break;
                 
             case 'iis':
-                if ($server_info['has_url_rewrite'] && $server_info['can_use_web_config']) {
+                if (isset($server_info['supports_web_config']) && $server_info['supports_web_config']) {
                     $strategies[] = 'static_file_with_web_config';
-                    error_log("KISMET LLMS STRATEGIES: IIS with URL Rewrite - using static file + web.config");
+                    error_log("KISMET LLMS STRATEGIES: IIS with web.config support - using static file + web.config");
                 }
                 $strategies[] = 'wordpress_rewrite';
                 break;
@@ -137,24 +137,22 @@ class Kismet_LLMS_Strategies {
         
         switch ($strategy) {
             case 'static_file_with_htaccess':
-                return ($server_info['primary_server'] === 'apache' || $server_info['primary_server'] === 'litespeed') 
-                    && $server_info['has_mod_rewrite'] 
-                    && $server_info['can_use_htaccess'];
+                return (strtolower($server_info['type']) === 'apache' || strtolower($server_info['type']) === 'litespeed') 
+                    && isset($server_info['supports_htaccess']) && $server_info['supports_htaccess'];
                     
             case 'static_file_with_nginx_suggestion':
-                return $server_info['primary_server'] === 'nginx' 
-                    && $server_info['can_create_files'];
+                return strtolower($server_info['type']) === 'nginx' 
+                    && isset($server_info['supports_nginx_config']) && $server_info['supports_nginx_config'];
                     
             case 'static_file_with_web_config':
-                return $server_info['primary_server'] === 'iis' 
-                    && $server_info['has_url_rewrite'] 
-                    && $server_info['can_use_web_config'];
+                return strtolower($server_info['type']) === 'iis' 
+                    && isset($server_info['supports_web_config']) && $server_info['supports_web_config'];
                     
             case 'wordpress_rewrite':
                 return true; // Always available as fallback
                 
             case 'manual_static_file':
-                return $server_info['can_create_files'];
+                return isset($server_info['filesystem_permissions']['can_write_root']) && $server_info['filesystem_permissions']['can_write_root'];
                 
             default:
                 return false;

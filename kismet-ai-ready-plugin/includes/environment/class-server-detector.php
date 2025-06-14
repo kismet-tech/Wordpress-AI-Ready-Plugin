@@ -567,7 +567,10 @@ class Kismet_Server_Detector {
             'capabilities' => $capabilities,
             // NOTE: Removed preferred_strategy - misleading for endpoint-specific needs
             'supports_htaccess' => $this->supports_htaccess,
-            'supports_nginx_config' => $this->supports_nginx_config
+            'supports_nginx_config' => $this->supports_nginx_config,
+            'supports_web_config' => $this->supports_web_config,
+            'filesystem_permissions' => $this->filesystem_permissions,
+            'hosting_environment' => $this->hosting_environment
         );
     }
     

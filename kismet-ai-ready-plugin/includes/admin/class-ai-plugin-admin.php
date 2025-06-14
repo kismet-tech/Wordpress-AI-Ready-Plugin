@@ -178,22 +178,11 @@ class Kismet_AI_Plugin_Admin {
      * Server information section callback
      */
     public function server_info_section_callback() {
-        global $kismet_ask_proxy_plugin;
-        
-        if ($kismet_ask_proxy_plugin) {
-            $server_info = $kismet_ask_proxy_plugin->get_server_info();
-        } else {
-            // Fallback if plugin instance not available
-            $server_info = array(
-                'type' => 'Unknown',
-                'version' => null,
-                'raw_string' => '',
-                'capabilities' => array(),
-                'preferred_strategy' => 'wordpress_rewrite',
-                'supports_htaccess' => false,
-                'supports_nginx_config' => false
-            );
-        }
+        // Create server detector instance directly to avoid global variable timing issues
+        require_once(plugin_dir_path(__FILE__) . '../environment/class-server-detector.php');
+        $server_detector = new Kismet_Server_Detector();
+        $server_detector->detect_server_environment();
+        $server_info = $server_detector->get_server_info();
         
         $this->render_server_info_display($server_info);
     }
@@ -420,13 +409,17 @@ class Kismet_AI_Plugin_Admin {
             wp_die('Unauthorized');
         }
         
-        // Get the core handler and trigger regeneration
-        $core_handler = $this->get_core_handler();
-        if ($core_handler) {
-            $result = $core_handler->regenerate_static_file();
-            wp_send_json($result);
-        } else {
-            wp_send_json_error('Core AI Plugin Handler not available');
+        // Simple regeneration without complex dependencies
+        try {
+            // Trigger AI plugin installer to regenerate the file
+            if (class_exists('Kismet_AI_Plugin_Installer')) {
+                Kismet_AI_Plugin_Installer::activate();
+                wp_send_json_success('AI Plugin file regenerated successfully');
+            } else {
+                wp_send_json_error('AI Plugin Installer not available');
+            }
+        } catch (Exception $e) {
+            wp_send_json_error('Regeneration failed: ' . $e->getMessage());
         }
     }
     
@@ -434,22 +427,35 @@ class Kismet_AI_Plugin_Admin {
      * Get AI Plugin status from core handler
      */
     private function get_ai_plugin_status() {
-        $core_handler = $this->get_core_handler();
-        if ($core_handler) {
-            return $core_handler->get_endpoint_status();
+        // Simple status check without relying on global variables
+        $ai_plugin_path = ABSPATH . '.well-known/ai-plugin.json';
+        $endpoint_url = get_site_url() . '/.well-known/ai-plugin.json';
+        
+        if (file_exists($ai_plugin_path)) {
+            return array(
+                'endpoint_created' => true,
+                'creation_method' => 'static_file',
+                'static_file_exists' => true,
+                'static_file_current' => true,
+                'static_file_path' => $ai_plugin_path,
+                'last_generated' => date('Y-m-d H:i:s', filemtime($ai_plugin_path)),
+                'last_settings_update' => 'unknown',
+                'endpoint_url' => $endpoint_url,
+                'performance_note' => 'Static file serving'
+            );
         }
         
-        // Fallback status if core handler not available
+        // Fallback status if file doesn't exist
         return array(
             'endpoint_created' => false,
-            'creation_method' => 'handler_not_available',
+            'creation_method' => 'not_created',
             'static_file_exists' => false,
             'static_file_current' => false,
-            'static_file_path' => ABSPATH . '.well-known/ai-plugin.json',
-            'last_generated' => 'unknown',
+            'static_file_path' => $ai_plugin_path,
+            'last_generated' => 'never',
             'last_settings_update' => 'unknown',
-            'endpoint_url' => get_site_url() . '/.well-known/ai-plugin.json',
-            'performance_note' => 'Core handler not available'
+            'endpoint_url' => $endpoint_url,
+            'performance_note' => 'File not found'
         );
     }
     
@@ -457,14 +463,8 @@ class Kismet_AI_Plugin_Admin {
      * Get reference to core AI Plugin Handler
      */
     private function get_core_handler() {
-        global $kismet_ask_proxy_plugin;
-        
-        if ($kismet_ask_proxy_plugin) {
-            // In this architecture, the admin class handles AI plugin functionality
-            return $this;
-        }
-        
-        return null;
+        // Return self since this admin class handles the functionality
+        return $this;
     }
     
     /**
