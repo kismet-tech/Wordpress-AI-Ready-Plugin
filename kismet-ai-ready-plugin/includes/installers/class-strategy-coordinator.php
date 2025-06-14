@@ -141,12 +141,9 @@ class Kismet_Strategy_Coordinator {
                 return $strategy_class->get_ordered_strategies();
                 
             case 'llms':
-                // Fallback to basic strategies for LLMs endpoint
-                return array(
-                    'static_file_with_htaccess',
-                    'wordpress_rewrite',
-                    'manual_static_file'
-                );
+                require_once plugin_dir_path(__FILE__) . '../strategies/class-llms-strategies.php';
+                $strategy_class = new Kismet_LLMS_Strategies($this->plugin_instance);
+                return $strategy_class->get_ordered_strategies();
                 
             default:
                 return array();

@@ -40,7 +40,6 @@ class Kismet_Endpoint_Status_Dashboard {
                 <h3 style="margin: 0;">Endpoint Status Dashboard</h3>
                 <div>
                     <button type="button" id="kismet-test-all" class="button button-primary">Test All Endpoints</button>
-                    <button type="button" id="kismet-show-example" class="button" style="margin-left: 8px;">Show Button Examples</button>
                 </div>
             </div>
             
@@ -58,36 +57,6 @@ class Kismet_Endpoint_Status_Dashboard {
                     </div>
                 </div>
             <?php endforeach; ?>
-            
-            <div id="kismet-example-container" style="display: none; margin-top: 20px; padding: 15px; background: #f0f6fc; border: 1px solid #c3c4c7; border-radius: 4px;">
-                <h4>Button Examples (Simulated Failed Endpoints)</h4>
-                <div class="kismet-endpoint-row">
-                    <div class="kismet-endpoint-name">AI Plugin (Example)</div>
-                    <div class="kismet-endpoint-url">/.well-known/ai-plugin.json</div>
-                    <div class="kismet-endpoint-status">
-                        <div class="endpoint-failed">
-                            ❌ Failed<br>
-                            <small>Static file method failed</small><br>
-                            <strong style="color: #d63638; font-size: 12px;">✗ Static File not working</strong><br>
-                            <button type="button" class="button button-small try-fallback-btn" data-endpoint="ai_plugin" data-strategy="wordpress_rewrite" style="margin-top: 6px; font-size: 11px;">Try WordPress Rewrite</button>
-                        </div>
-                    </div>
-                    <div class="kismet-endpoint-actions">Example</div>
-                </div>
-                <div class="kismet-endpoint-row">
-                    <div class="kismet-endpoint-name">Ask Endpoint (Example)</div>
-                    <div class="kismet-endpoint-url">/ask</div>
-                    <div class="kismet-endpoint-status">
-                        <div class="endpoint-failed">
-                            ❌ Failed<br>
-                            <small>WordPress rewrite failed</small><br>
-                            <strong style="color: #d63638; font-size: 12px;">✗ WordPress Rewrite not working</strong><br>
-                            <button type="button" class="button button-small try-fallback-btn" data-endpoint="ask_endpoint" data-strategy="physical_file" style="margin-top: 6px; font-size: 11px;">Try Static File</button>
-                        </div>
-                    </div>
-                    <div class="kismet-endpoint-actions">Example</div>
-                </div>
-            </div>
         </div>
         <?php
     }
@@ -143,23 +112,6 @@ class Kismet_Endpoint_Status_Dashboard {
                         }
                         button.prop("disabled", false).text("Test All Endpoints");
                     });
-                });
-                
-                // **REMOVED: Old AJAX strategy switching - now using secure WordPress admin actions**
-                
-                // **NEW: Show button examples**
-                $("#kismet-show-example").click(function(e) {
-                    e.preventDefault();
-                    var container = $("#kismet-example-container");
-                    var button = $(this);
-                    
-                    if (container.is(":visible")) {
-                        container.slideUp();
-                        button.text("Show Button Examples");
-                    } else {
-                        container.slideDown();
-                        button.text("Hide Examples");
-                    }
                 });
                 
                 // Auto-test on page load

@@ -17,6 +17,7 @@ if (!defined('ABSPATH')) {
 }
 
 require_once(plugin_dir_path(__FILE__) . '../shared/class-file-safety-manager.php');
+require_once(plugin_dir_path(__FILE__) . '../shared/class-endpoint-manager.php');
 
 class Kismet_LLMS_Content_Logic {
     
@@ -27,13 +28,33 @@ class Kismet_LLMS_Content_Logic {
         error_log("KISMET INSTALLER: LLMS activation starting");
         
         try {
-            // Generate static LLMS.txt file ONE TIME
+            // IMMEDIATE FIX: Create static file (like robots.txt does)
+            // This ensures the endpoint works immediately
             self::create_static_llms_file();
+            
+            // FUTURE: Also register with Endpoint Manager for metrics capability
+            // This prepares for the metrics system but doesn't break current functionality
+            $endpoint_manager = Kismet_Endpoint_Manager::get_instance();
+            
+            $test_results = $endpoint_manager->register_endpoint(array(
+                'path' => '/llms.txt',
+                'content_generator' => array(self::class, 'generate_llms_content'),
+                'content_type' => 'text/plain'
+            ));
+            
+            // Log the strategy used
+            $strategy = $test_results['strategy_used'] ?? 'unknown';
+            error_log("KISMET INSTALLER: LLMS endpoint using strategy: " . $strategy);
+            
+            // Set activation timestamp
+            update_option('kismet_llms_activated', current_time('timestamp'));
+            update_option('kismet_llms_strategy', $strategy);
             
             error_log("KISMET INSTALLER: LLMS activation completed successfully");
             
         } catch (Exception $e) {
             error_log("KISMET INSTALLER ERROR: LLMS activation failed: " . $e->getMessage());
+            // Don't throw - let activation continue
         }
     }
     
@@ -44,13 +65,22 @@ class Kismet_LLMS_Content_Logic {
         error_log("KISMET INSTALLER: LLMS deactivation starting");
         
         try {
-            // Remove static file
+            // Clean up static file (like robots.txt does)
             self::cleanup_static_file();
+            
+            // Also use endpoint manager for cleanup
+            $endpoint_manager = Kismet_Endpoint_Manager::get_instance();
+            $endpoint_manager->cleanup_endpoint('/llms.txt');
+            
+            // Clean up options
+            delete_option('kismet_llms_activated');
+            delete_option('kismet_llms_strategy');
             
             error_log("KISMET INSTALLER: LLMS deactivation completed");
             
         } catch (Exception $e) {
             error_log("KISMET INSTALLER ERROR: LLMS deactivation failed: " . $e->getMessage());
+            // Don't throw - let deactivation continue
         }
     }
     
@@ -80,8 +110,10 @@ class Kismet_LLMS_Content_Logic {
     
     /**
      * Generate LLMS.txt content
+     * 
+     * PUBLIC method so it can be called by Endpoint Manager for WordPress rewrite strategy
      */
-    private static function generate_llms_content() {
+    public static function generate_llms_content() {
         // ALL database operations happen here during activation
         $site_url = get_site_url();           // DB operation
         $site_name = get_bloginfo('name');    // DB operation  

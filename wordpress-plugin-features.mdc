@@ -53,7 +53,83 @@ WordPress plugin that makes hotel websites AI-discoverable and provides intellig
 - **Database**: Logs conversations for analytics (when backend is configured)
 - **Status**: Backend endpoint configured - requires SSE stream handling
 
-### 6. Admin Interface
+### 6. Metrics Event System
+- **Purpose**: Tracks user interactions and API usage for analytics and monitoring
+- **Integration**: Automatically sends event data to metrics endpoint for all Ask endpoint interactions
+- **Configuration**: Uses configurable constants for easy environment switching
+
+#### Configuration Constants
+- **`KISMET_METRICS_BASE_URL`**: Base URL for metrics endpoint (supports ngrok for testing)
+- **`KISMET_METRICS_ROUTE`**: Endpoint path for metrics collection (default: `/metrics`)
+- **Environment Switching**: Easy switching between development (ngrok) and production URLs
+
+#### Networking Class (`includes/networking/class-metrics-sender.php`)
+- **Purpose**: Centralized metrics sending functionality
+- **Method**: `send_endpoint_request_data($eventType)` - sends non-blocking POST requests
+- **Performance**: Non-blocking requests to avoid impacting user experience
+- **Error Handling**: Graceful failure - metrics errors don't affect core functionality
+
+#### Event Data Structure
+All metrics events include the following standardized properties:
+```json
+{
+  "eventType": "PLUGIN_ASK_PAGE_GET|PLUGIN_ASK_PAGE_POST",
+  "eventName": "PLUGIN_ASK_PAGE_GET|PLUGIN_ASK_PAGE_POST", 
+  "timestamp": "2024-01-15T10:30:00Z",
+  "source": "web",
+  "ipAddress": "user-ip-address",
+  "userAgent": "user-browser-string",
+  "url": "full-request-url",
+  "referrer": "referring-page-url",
+  "hotelId": "hotel-identifier"
+}
+```
+
+#### Event Types
+- **`PLUGIN_ASK_PAGE_GET`**: Triggered on GET requests to `/ask` endpoint (human visitors viewing chat interface)
+- **`PLUGIN_ASK_PAGE_POST`**: Triggered on POST requests to `/ask` endpoint (API calls for chat interactions)
+
+#### Implementation Integration
+- **Ask Endpoint Handler**: Automatically sends appropriate event type based on request method
+- **Data Collection**: Captures user agent, IP address, referrer, and other contextual information
+- **Client ID Integration**: Uses WordPress option `kismet_hotel_id` for hotel identification
+- **Graceful Degradation**: Continues to send metrics even if hotel ID is not configured
+- **Minimal Code Impact**: Single method call integrated into existing request processing
+- **Non-blocking Requests**: 2-second timeout with non-blocking execution to avoid impacting user experience
+
+#### Metrics URL Construction
+```php
+$metrics_url = KISMET_METRICS_BASE_URL . KISMET_METRICS_ROUTE;
+// Example: https://api.makekismet.com/metrics
+// Development: https://abc123.ngrok.io/metrics
+```
+
+#### Usage in Ask Endpoint
+- **GET Requests**: Sends `PLUGIN_ASK_PAGE_GET` event when users visit chat interface
+- **POST Requests**: Sends `PLUGIN_ASK_PAGE_POST` event when API calls are made
+- **Automatic**: No manual intervention required - events sent automatically on endpoint access
+- **Reliable**: Uses WordPress HTTP API for robust request handling
+
+#### Future Implementation Plans
+**Goal**: Extend metrics tracking to all plugin endpoints, not just `/ask`
+
+**Challenge**: Most other endpoints (`/.well-known/ai-plugin.json`, `/.well-known/mcp/servers.json`, `/llms.txt`, `/robots.txt`) use **static file strategies** for optimal performance. Static files are served directly by the web server without executing PHP code, making it impossible to call the metrics sender.
+
+**Planned Solution**: Hybrid approach that maintains performance while adding metrics where possible:
+- **Keep static file strategies as primary** for maximum performance (AI crawlers need zero-latency access)
+- **Add metrics calls to WordPress rewrite strategies** used as fallbacks
+- **Result**: High-performance sites get static files (no metrics), compatibility sites get WordPress rewrites (with metrics)
+
+**Implementation Status**: 
+- ✅ `/ask` endpoint - **Implemented** (uses WordPress rewrite strategy)
+- ❌ `/.well-known/ai-plugin.json` - **Planned** (static file primary, metrics in rewrite fallback)
+- ❌ `/.well-known/mcp/servers.json` - **Planned** (static file primary, metrics in rewrite fallback)  
+- ❌ `/llms.txt` - **Planned** (static file primary, metrics in rewrite fallback)
+- ❌ `/robots.txt` - **Planned** (file modification primary, metrics in rewrite fallback)
+
+**Technical Approach**: Modify WordPress rewrite building blocks to include metrics calls, ensuring metrics are captured when endpoints fall back to dynamic serving while preserving the performance benefits of static files for optimal hosting environments.
+
+### 7. Admin Interface
 - **Location**: WordPress admin → Settings → Kismet AI Plugin  
 - **Purpose**: Configure AI plugin settings and view diagnostics
 - **Features**: 
@@ -62,7 +138,7 @@ WordPress plugin that makes hotel websites AI-discoverable and provides intellig
   - View environment compatibility report
   - Monitor endpoint status
 
-### 7. Environment Detection
+### 8. Environment Detection
 - **Purpose**: Checks WordPress environment compatibility
 - **Features**:
   - Web server configuration analysis
@@ -337,6 +413,9 @@ includes/
   handlers/                          # Runtime request processing (minimal - only /ask endpoint)
     class-ask-handler.php            # ONLY handler needed - processes /ask requests
   
+  networking/                        # External API communication
+    class-metrics-sender.php         # Sends event data to metrics endpoint
+  
   admin/                             # Configuration interface
   environment/                       # Compatibility detection and server analysis
   shared/                            # Common utilities and safety managers
@@ -395,6 +474,14 @@ includes/
   - Proxies requests to Kismet backend
   - Logs conversations and handles responses
   - Serves chat interface for human visitors
+
+### `/networking/` - External API Communication
+**Purpose**: Handles communication with external Kismet services
+- **`class-metrics-sender.php`**: 
+  - Centralized metrics event sending functionality
+  - Non-blocking POST requests to metrics endpoint
+  - Configurable base URL for development/production switching
+  - Standardized event data structure and error handling
 
 ### `/admin/` - WordPress Admin Interface
 **Purpose**: Provides configuration interface in WordPress admin

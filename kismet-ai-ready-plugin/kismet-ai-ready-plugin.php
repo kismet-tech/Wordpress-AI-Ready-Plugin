@@ -47,6 +47,7 @@ require_once KISMET_PLUGIN_PATH . 'includes/strategies/strategies.php';
 require_once KISMET_PLUGIN_PATH . 'includes/strategies/class-ai-plugin-strategies.php';
 require_once KISMET_PLUGIN_PATH . 'includes/strategies/class-mcp-servers-strategies.php';
 require_once KISMET_PLUGIN_PATH . 'includes/strategies/class-robots-strategies.php';
+require_once KISMET_PLUGIN_PATH . 'includes/strategies/class-llms-strategies.php';
 require_once KISMET_PLUGIN_PATH . 'includes/strategies/class-ask-strategies.php';
 require_once KISMET_PLUGIN_PATH . 'includes/installers/class-strategy-coordinator.php';
 require_once KISMET_PLUGIN_PATH . 'includes/admin/class-ai-plugin-admin.php';
@@ -143,6 +144,9 @@ class Kismet_Ask_Proxy_Plugin {
                 
             case '/robots.txt':
                 return new Kismet_Robots_Strategies($this);
+                
+            case '/llms.txt':
+                return new Kismet_LLMS_Strategies($this);
                 
             case '/ask':
                 return new Kismet_Ask_Strategies($this);

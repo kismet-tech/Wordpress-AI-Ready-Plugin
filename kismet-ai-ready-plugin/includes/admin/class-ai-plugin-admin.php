@@ -101,19 +101,19 @@ class Kismet_AI_Plugin_Admin {
     }
     
     /**
-     * Register all settings and sections
+     * Initialize settings
      */
     public function settings_init() {
-        // Register settings
+        // Register settings for all fields
+        register_setting('kismet_ai_plugin', 'kismet_client_id');
         register_setting('kismet_ai_plugin', 'kismet_custom_ai_plugin_url');
-        register_setting('kismet_ai_plugin', 'kismet_hotel_id');
         register_setting('kismet_ai_plugin', 'kismet_hotel_name');
         register_setting('kismet_ai_plugin', 'kismet_hotel_description');
         register_setting('kismet_ai_plugin', 'kismet_logo_url');
         register_setting('kismet_ai_plugin', 'kismet_contact_email');
         register_setting('kismet_ai_plugin', 'kismet_legal_info_url');
         
-        // Add settings sections
+        // Essential Configuration Section
         add_settings_section(
             'kismet_ai_plugin_essential_section',
             'Essential Configuration',
@@ -121,6 +121,7 @@ class Kismet_AI_Plugin_Admin {
             'kismet_ai_plugin'
         );
         
+        // Endpoint Status Dashboard Section
         add_settings_section(
             'kismet_ai_plugin_status_section',
             'Endpoint Status Dashboard',
@@ -128,6 +129,7 @@ class Kismet_AI_Plugin_Admin {
             'kismet_ai_plugin'
         );
         
+        // Server Environment Information Section
         add_settings_section(
             'kismet_ai_plugin_server_info_section',
             'Server Environment Information',
@@ -135,50 +137,8 @@ class Kismet_AI_Plugin_Admin {
             'kismet_ai_plugin'
         );
         
-        add_settings_section(
-            'kismet_ai_plugin_custom_json_section',
-            'Custom JSON Configuration',
-            array($this, 'custom_json_section_callback'),
-            'kismet_ai_plugin'
-        );
-        
-        add_settings_section(
-            'kismet_ai_plugin_json_fields_section',
-            'AI Plugin JSON Fields',
-            array($this, 'json_fields_section_callback'),
-            'kismet_ai_plugin'
-        );
-        
-        // Essential configuration fields
-        // Note: Client ID is rendered directly in the section callback to keep it inside the box
-        
-        // Add settings fields
-        add_settings_field(
-            'kismet_custom_ai_plugin_url',
-            'Custom AI Plugin JSON URL',
-            array($this, 'custom_url_render'),
-            'kismet_ai_plugin',
-            'kismet_ai_plugin_custom_json_section'
-        );
-        
-        // JSON field settings (removed hotel_id from here)
-        $fields = array(
-            'hotel_name' => 'Hotel/Business Name',
-            'hotel_description' => 'Hotel Description',
-            'logo_url' => 'Logo URL',
-            'contact_email' => 'Contact Email',
-            'legal_info_url' => 'Legal/Privacy Policy URL'
-        );
-        
-        foreach ($fields as $field_key => $field_label) {
-            add_settings_field(
-                "kismet_$field_key",
-                $field_label,
-                array($this, $field_key . '_render'),
-                'kismet_ai_plugin',
-                'kismet_ai_plugin_json_fields_section'
-            );
-        }
+        // Note: JSON Configuration section is now rendered manually in settings_page()
+        // to ensure all fields appear in the same styled box
     }
     
     /**
@@ -272,79 +232,6 @@ class Kismet_AI_Plugin_Admin {
     }
 
     /**
-     * Custom JSON configuration section
-     */
-    public function custom_json_section_callback() {
-        echo '<p>Configure a custom AI plugin JSON source or use auto-generated values below.</p>';
-        
-        // Show current endpoint status (keeping the existing functionality)
-        $status = $this->get_ai_plugin_status();
-        if ($status['endpoint_created']) {
-            echo '<div class="notice notice-success"><p>';
-            echo "✅ AI Plugin endpoint is active via <strong>{$status['creation_method']}</strong><br>";
-            echo "🔗 <a href=\"{$status['endpoint_url']}\" target=\"_blank\">{$status['endpoint_url']}</a>";
-            echo '</p></div>';
-        } else {
-            echo '<div class="notice notice-warning"><p>';
-            echo "⚠️ AI Plugin endpoint is not yet active. Check the status dashboard above for detailed diagnostics.";
-            echo '</p></div>';
-        }
-    }
-    
-    /**
-     * JSON fields section description
-     */
-    public function json_fields_section_callback() {
-        echo '<p>These fields are used to generate the AI plugin JSON automatically when no custom URL is provided.</p>';
-        echo '<p><strong>Note:</strong> The static file will automatically regenerate when you save changes to any field below.</p>';
-    }
-    
-    /**
-     * Form field renderers
-     */
-    public function custom_url_render() {
-        $value = get_option('kismet_custom_ai_plugin_url', '');
-        echo "<input type='url' name='kismet_custom_ai_plugin_url' value='$value' class='regular-text' placeholder='https://example.com/custom-ai-plugin.json'>";
-        echo '<p class="description">Leave empty to use auto-generated AI plugin JSON served as static file.</p>';
-    }
-    
-    public function hotel_name_render() {
-        $value = get_option('kismet_hotel_name', '');
-        $placeholder = get_bloginfo('name') ?: 'Your Hotel Name';
-        echo "<input type='text' name='kismet_hotel_name' value='$value' class='regular-text' placeholder='$placeholder'>";
-        echo '<p class="description">Auto-detected from site name if empty.</p>';
-    }
-    
-    public function hotel_description_render() {
-        $value = get_option('kismet_hotel_description', '');
-        $site_name = get_bloginfo('name') ?: 'Your Hotel';
-        $placeholder = "Get information about $site_name including amenities, pricing, availability, and booking assistance.";
-        echo "<textarea name='kismet_hotel_description' rows='3' class='large-text' placeholder='$placeholder'>$value</textarea>";
-        echo '<p class="description">Auto-generated description if empty.</p>';
-    }
-    
-    public function logo_url_render() {
-        $value = get_option('kismet_logo_url', '');
-        $placeholder = get_site_url() . '/wp-content/uploads/2024/kismet-logo.png';
-        echo "<input type='url' name='kismet_logo_url' value='$value' class='regular-text' placeholder='$placeholder'>";
-        echo '<p class="description">Logo image for AI plugin display.</p>';
-    }
-    
-    public function contact_email_render() {
-        $value = get_option('kismet_contact_email', '');
-        $placeholder = get_option('admin_email', 'admin@example.com');
-        echo "<input type='email' name='kismet_contact_email' value='$value' class='regular-text' placeholder='$placeholder'>";
-        echo '<p class="description">Auto-detected from admin email if empty.</p>';
-    }
-    
-    public function legal_info_url_render() {
-        $value = get_option('kismet_legal_info_url', '');
-        $placeholder = get_site_url() . '/privacy-policy';
-        echo "<input type='url' name='kismet_legal_info_url' value='$value' class='regular-text' placeholder='$placeholder'>";
-        echo '<p class="description">Link to privacy policy or legal information.</p>';
-    }
-    
-    /**
      * Settings page renderer
      */
     public function settings_page() {
@@ -354,9 +241,146 @@ class Kismet_AI_Plugin_Admin {
             <form action="options.php" method="post">
                 <?php
                 settings_fields('kismet_ai_plugin');
+                
+                // Render Essential Configuration and other sections using WordPress API
                 do_settings_sections('kismet_ai_plugin');
-                submit_button();
                 ?>
+                
+                <!-- Custom JSON Configuration Box -->
+                <h2>AI Plugin JSON Configuration</h2>
+                <div class="kismet-json-config-box">
+                    <p>Configure a custom AI plugin JSON source or use the auto-generated fields below.</p>
+                    
+                    <?php
+                    // Show current endpoint status
+                    $status = $this->get_ai_plugin_status();
+                    if ($status['endpoint_created']) {
+                        echo '<div class="notice notice-success"><p>';
+                        echo "✅ AI Plugin endpoint is active via <strong>{$status['creation_method']}</strong><br>";
+                        echo "🔗 <a href=\"{$status['endpoint_url']}\" target=\"_blank\">{$status['endpoint_url']}</a>";
+                        echo '</p></div>';
+                    } else {
+                        echo '<div class="notice notice-warning"><p>';
+                        echo "⚠️ AI Plugin endpoint is not yet active. Check the status dashboard above for detailed diagnostics.";
+                        echo '</p></div>';
+                    }
+                    ?>
+                    
+                    <hr style="margin: 20px 0;">
+                    
+                    <table class="form-table" role="presentation">
+                        <tbody>
+                            <tr>
+                                <th scope="row">
+                                    <label for="kismet_custom_ai_plugin_url">Custom AI Plugin JSON URL</label>
+                                </th>
+                                <td>
+                                    <?php
+                                    $value = get_option('kismet_custom_ai_plugin_url', '');
+                                    echo "<input type='url' id='kismet_custom_ai_plugin_url' name='kismet_custom_ai_plugin_url' value='$value' class='regular-text' placeholder='https://example.com/custom-ai-plugin.json'>";
+                                    echo '<p class="description">Leave empty to use auto-generated AI plugin JSON served as static file.</p>';
+                                    ?>
+                                </td>
+                            </tr>
+                            
+                            <tr>
+                                <th scope="row">
+                                    <label for="kismet_hotel_name">Hotel/Business Name</label>
+                                </th>
+                                <td>
+                                    <?php
+                                    $value = get_option('kismet_hotel_name', '');
+                                    $placeholder = get_bloginfo('name') ?: 'Your Hotel Name';
+                                    echo "<input type='text' id='kismet_hotel_name' name='kismet_hotel_name' value='$value' class='regular-text' placeholder='$placeholder'>";
+                                    echo '<p class="description">Auto-detected from site name if empty.</p>';
+                                    ?>
+                                </td>
+                            </tr>
+                            
+                            <tr>
+                                <th scope="row">
+                                    <label for="kismet_hotel_description">Hotel Description</label>
+                                </th>
+                                <td>
+                                    <?php
+                                    $value = get_option('kismet_hotel_description', '');
+                                    $site_name = get_bloginfo('name') ?: 'Your Hotel';
+                                    $placeholder = "Get information about $site_name including amenities, pricing, availability, and booking assistance.";
+                                    echo "<textarea id='kismet_hotel_description' name='kismet_hotel_description' rows='3' class='large-text' placeholder='$placeholder'>$value</textarea>";
+                                    echo '<p class="description">Auto-generated description if empty.</p>';
+                                    ?>
+                                </td>
+                            </tr>
+                            
+                            <tr>
+                                <th scope="row">
+                                    <label for="kismet_logo_url">Logo URL</label>
+                                </th>
+                                <td>
+                                    <?php
+                                    $value = get_option('kismet_logo_url', '');
+                                    $placeholder = get_site_url() . '/wp-content/uploads/2024/kismet-logo.png';
+                                    echo "<input type='url' id='kismet_logo_url' name='kismet_logo_url' value='$value' class='regular-text' placeholder='$placeholder'>";
+                                    echo '<p class="description">Logo image for AI plugin display.</p>';
+                                    ?>
+                                </td>
+                            </tr>
+                            
+                            <tr>
+                                <th scope="row">
+                                    <label for="kismet_contact_email">Contact Email</label>
+                                </th>
+                                <td>
+                                    <?php
+                                    $value = get_option('kismet_contact_email', '');
+                                    $placeholder = get_option('admin_email', 'admin@example.com');
+                                    echo "<input type='email' id='kismet_contact_email' name='kismet_contact_email' value='$value' class='regular-text' placeholder='$placeholder'>";
+                                    echo '<p class="description">Auto-detected from admin email if empty.</p>';
+                                    ?>
+                                </td>
+                            </tr>
+                            
+                            <tr>
+                                <th scope="row">
+                                    <label for="kismet_legal_info_url">Legal/Privacy Policy URL</label>
+                                </th>
+                                <td>
+                                    <?php
+                                    $value = get_option('kismet_legal_info_url', '');
+                                    $placeholder = get_site_url() . '/privacy-policy';
+                                    echo "<input type='url' id='kismet_legal_info_url' name='kismet_legal_info_url' value='$value' class='regular-text' placeholder='$placeholder'>";
+                                    echo '<p class="description">Link to privacy policy or legal information.</p>';
+                                    ?>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    
+                    <p><strong>Note:</strong> The static file will automatically regenerate when you save changes to any field above.</p>
+                </div>
+                
+                <style>
+                .kismet-json-config-box {
+                    background: #fff;
+                    border: 1px solid #ccd0d4;
+                    border-radius: 4px;
+                    padding: 20px;
+                    margin: 20px 0;
+                }
+                .kismet-json-config-box h2 {
+                    margin-top: 0;
+                    color: #1d2327;
+                    font-size: 1.3em;
+                }
+                .kismet-json-config-box .notice {
+                    margin: 15px 0;
+                }
+                .kismet-json-config-box .form-table {
+                    margin-top: 0;
+                }
+                </style>
+                
+                <?php submit_button(); ?>
             </form>
         </div>
         <?php
