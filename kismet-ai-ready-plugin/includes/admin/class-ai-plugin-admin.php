@@ -81,6 +81,30 @@ class Kismet_AI_Plugin_Admin {
         echo '<p class="description" style="margin-top: 8px;">Unique identifier for your business (e.g., "my-business", "company-name"). This will be included in all metrics data sent to your analytics endpoint for proper tracking and identification.</p>';
         echo '</td>';
         echo '</tr>';
+        
+        // Add Event Tracking Toggle
+        $event_tracking_enabled = get_option('kismet_enable_event_tracking', false); // Default to false (OFF)
+        
+        echo '<tr>';
+        echo '<th scope="row"><label for="kismet_enable_event_tracking">Use Static Files Only</label></th>';
+        echo '<td>';
+        
+        // Checkbox input
+        $checked = $event_tracking_enabled ? 'checked' : '';
+        echo "<input type='checkbox' id='kismet_enable_event_tracking' name='kismet_enable_event_tracking' value='1' $checked>";
+        echo '<label for="kismet_enable_event_tracking" style="margin-left: 8px;">Disable event tracking for maximum performance</label>';
+        
+        // Status indicator
+        if ($event_tracking_enabled) {
+            echo '<span style="color: #46b450; margin-left: 10px; font-weight: 500;">✓ Static files only (no events)</span>';
+        } else {
+            echo '<span style="color: #0073aa; margin-left: 10px; font-weight: 500;">📊 Event tracking active</span>';
+        }
+        
+        echo '<p class="description" style="margin-top: 8px;">When unchecked (default), WordPress rewrites are used to enable event tracking and metrics collection. When checked, static files are used for maximum performance but no events are sent.</p>';
+        echo '</td>';
+        echo '</tr>';
+        
         echo '</table>';
         
         echo '</div>';
@@ -106,6 +130,7 @@ class Kismet_AI_Plugin_Admin {
     public function settings_init() {
         // Register settings for all fields
         register_setting('kismet_ai_plugin', 'kismet_client_id');
+        register_setting('kismet_ai_plugin', 'kismet_enable_event_tracking');
         register_setting('kismet_ai_plugin', 'kismet_custom_ai_plugin_url');
         register_setting('kismet_ai_plugin', 'kismet_hotel_name');
         register_setting('kismet_ai_plugin', 'kismet_hotel_description');
@@ -432,11 +457,31 @@ class Kismet_AI_Plugin_Admin {
      * Get reference to core AI Plugin Handler
      */
     private function get_core_handler() {
-        // Access the global plugin instance to get the handler
         global $kismet_ask_proxy_plugin;
-        if ($kismet_ask_proxy_plugin && isset($kismet_ask_proxy_plugin->ai_plugin_handler)) {
-            return $kismet_ask_proxy_plugin->ai_plugin_handler;
+        
+        if ($kismet_ask_proxy_plugin) {
+            // In this architecture, the admin class handles AI plugin functionality
+            return $this;
         }
+        
         return null;
+    }
+    
+    /**
+     * Static helper method to check if static files only mode is enabled
+     * 
+     * @return bool True if static files only (no events), false if events should be sent (default)
+     */
+    public static function is_static_files_only_enabled() {
+        return (bool) get_option('kismet_enable_event_tracking', false);
+    }
+    
+    /**
+     * Static helper method to check if event tracking should be active
+     * 
+     * @return bool True if events should be sent (default), false if static files only
+     */
+    public static function should_send_events() {
+        return !self::is_static_files_only_enabled();
     }
 } 
