@@ -27,7 +27,7 @@ define('KISMET_PLUGIN_URL', plugin_dir_url(__FILE__));
 
 // Metrics logging endpoint configuration
 // Change KISMET_METRICS_BASE_URL for different environments (e.g., ngrok for testing, production domain for live)
-define('KISMET_METRICS_BASE_URL', 'https://289a-67-245-16-134.ngrok-free.app'); // <-- CHANGE THIS FOR TEST/PROD
+define('KISMET_METRICS_BASE_URL', 'https://api.makekismet.com'); // <-- CHANGE THIS FOR TEST/PROD
 // The route to append to the base URL for metrics logging
 // Example: '/log-user-agent' or any endpoint you want to receive metrics
 // Do not include a trailing slash on the base URL, and do include a leading slash on the route
